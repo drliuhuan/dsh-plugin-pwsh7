@@ -198,10 +198,12 @@ npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
 
 ## Versioning note
 
-`0.1.0` is the first public release. Earlier internal iterations (0.2.x/0.3.x) included MSYS2 bash
-routing and used a different package name; that scope was removed because MSYS2/Cygwin cannot start
-under the DSH Windows ACL sandbox. The historical evidence stays in the build workspace
-(`sandbox-recon/FINDINGS.md`), not in this package.
+`0.1.0` was the first public release. `0.1.1` is the first release published through npm
+**Trusted Publishing** (OIDC) by GitHub Actions, and fixes the npm-hosted README cross-links.
+Earlier internal iterations (0.2.x/0.3.x) included MSYS2 bash routing and used a different package
+name; that scope was removed because MSYS2/Cygwin cannot start under the DSH Windows ACL sandbox.
+The historical evidence stays in the build workspace (`sandbox-recon/FINDINGS.md`), not in this
+package.
 
 ## Uninstall
 

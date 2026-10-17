@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-pwsh7",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Windows DeepSeek Harness bundle that routes the pwsh tool to PowerShell 7, with per-user detection, automatic installation, and a sandbox-aware executor.",
   "type": "module",
   "license": "MIT",
@@ -22,6 +22,7 @@
     "icon.svg",
     "README.md",
     "README.zh.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "keywords": [

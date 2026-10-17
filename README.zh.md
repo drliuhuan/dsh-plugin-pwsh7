@@ -188,9 +188,11 @@ npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
 
 ## 版本说明
 
-`0.1.0` 是第一个公开发布版本。更早的内部迭代（0.2.x/0.3.x）曾包含 MSYS2 bash 路由并使用过
-不同的包名；由于 MSYS2/Cygwin 无法在 DSH Windows ACL 沙箱中启动，该部分已被移除。历史实测证据
-保留在构建工作区的 `sandbox-recon/FINDINGS.md`，不在本包内。
+`0.1.0` 是第一个公开发布版本。`0.1.1` 是第一个通过 npm **Trusted Publishing**（OIDC）由
+GitHub Actions 发布的版本，并修正了 npm 页面 README 的跨文件链接。更早的内部迭代
+（0.2.x/0.3.x）曾包含 MSYS2 bash 路由并使用过不同的包名；由于 MSYS2/Cygwin 无法在 DSH Windows
+ACL 沙箱中启动，该部分已被移除。历史实测证据保留在构建工作区的 `sandbox-recon/FINDINGS.md`，
+不在本包内。
 
 ## 卸载
 
