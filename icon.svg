@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="PowerShell 7 Router">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071b30"/>
+      <stop offset="1" stop-color="#0f4f72"/>
+    </linearGradient>
+    <linearGradient id="seven" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffe28f"/>
+      <stop offset="1" stop-color="#efa62b"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="5" y="5" width="118" height="118" rx="26" fill="url(#bg)"/>
+  <path d="M22 24h84M22 96h84" stroke="#7fd8ff" stroke-opacity="0.10" stroke-width="2"/>
+
+  <!-- Terminal window: PowerShell prompt chevron + cursor. -->
+  <rect x="18" y="30" width="54" height="40" rx="9" fill="#0a2942" stroke="#5fd2ff" stroke-width="3"/>
+  <path d="M29 43l10 8-10 8" fill="none" stroke="#a6ecff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M45 59h13" stroke="#a6ecff" stroke-width="5" stroke-linecap="round"/>
+
+  <!-- PowerShell 7 numeral, drawn as a path so no font is required. -->
+  <path d="M76 30h36L94 90H83l15-50H76z" fill="url(#seven)"/>
+
+  <!-- Routing line: the prompt path leads to PowerShell 7. -->
+  <circle cx="24" cy="105" r="4" fill="#5fd2ff"/>
+  <path d="M30 105h58" fill="none" stroke="#ffcf5c" stroke-width="4" stroke-linecap="round"/>
+  <path d="M83 100l7 5-7 5" fill="none" stroke="#ffcf5c" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

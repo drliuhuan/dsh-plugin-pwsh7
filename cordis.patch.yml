@@ -1,0 +1,16 @@
+# dsh-plugin-pwsh7 — bundle patch.
+#
+# Windows only:
+#   Replace the host pwsh executor with one that resolves PowerShell 7 explicitly, keeping the
+#   stock sandbox executor behavior (escalation, denial facts, jobs, output caps).
+#
+# On other platforms the rows are disabled: the stock POSIX composition stays untouched.
+
+- id: pwsh-sandbox
+  name: 'dsh-plugin-pwsh7/pwsh-executor'
+  disabled: !!js process.platform !== 'win32'
+
+- insert:
+    - id: pwsh7-router
+      name: 'dsh-plugin-pwsh7'
+      disabled: !!js process.platform !== 'win32'

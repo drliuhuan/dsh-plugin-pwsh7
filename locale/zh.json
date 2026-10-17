@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Windows PowerShell 7 路由",
+    "description": "把 DSH 的 pwsh 工具路由到 PowerShell 7，支持自动检测/安装与沙箱模式。"
+  }
+}

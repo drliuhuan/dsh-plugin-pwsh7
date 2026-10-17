@@ -1,0 +1,60 @@
+{
+  "name": "dsh-plugin-pwsh7",
+  "version": "0.1.0",
+  "description": "Windows DeepSeek Harness bundle that routes the pwsh tool to PowerShell 7, with per-user detection, automatic installation, and a sandbox-aware executor.",
+  "type": "module",
+  "license": "MIT",
+  "author": "drliuhuan",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./pwsh-executor": "./lib/executors/pwsh.mjs",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "README.zh.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh-plugin",
+    "powershell",
+    "powershell-7",
+    "pwsh",
+    "windows",
+    "shell",
+    "sandbox"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drliuhuan/dsh-plugin-pwsh7.git"
+  },
+  "homepage": "https://github.com/drliuhuan/dsh-plugin-pwsh7#readme",
+  "bugs": {
+    "url": "https://github.com/drliuhuan/dsh-plugin-pwsh7/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "test": "node --test test/paths.test.mjs test/install.test.mjs"
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+*.tgz
+*.log
+.npmrc
+.DS_Store
+Thumbs.db
+.pwsh7-install-test/
