@@ -1,7 +1,7 @@
 # dsh-plugin-pwsh7
 
 [![npm version](https://img.shields.io/npm/v/dsh-plugin-pwsh7.svg)](https://www.npmjs.com/package/dsh-plugin-pwsh7)
-[![license](https://img.shields.io/npm/l/dsh-plugin-pwsh7.svg)](LICENSE)
+[![license](https://img.shields.io/npm/l/dsh-plugin-pwsh7.svg)](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/LICENSE)
 
 Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具路由到 PowerShell 7**
 （`pwsh.exe`，主版本 >= 7），不再落到 Windows PowerShell 5.1。
@@ -11,7 +11,7 @@ Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具
 - 找不到 PowerShell 7 时，提供模型可调用的 **`shell_router`** 工具做检测、诊断和
   **用户级自动下载安装**（默认不需要管理员权限）。
 
-[English](README.md) | 中文
+[English](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/README.md) | 中文
 
 ---
 
@@ -173,4 +173,4 @@ plugin_manager action=remove_bundle target=dsh-plugin-pwsh7
 
 ## License
 
-MIT，见 [LICENSE](LICENSE)。
+MIT，见 [LICENSE](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/LICENSE)。

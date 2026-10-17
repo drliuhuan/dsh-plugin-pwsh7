@@ -1,7 +1,7 @@
 # dsh-plugin-pwsh7
 
 [![npm version](https://img.shields.io/npm/v/dsh-plugin-pwsh7.svg)](https://www.npmjs.com/package/dsh-plugin-pwsh7)
-[![license](https://img.shields.io/npm/l/dsh-plugin-pwsh7.svg)](LICENSE)
+[![license](https://img.shields.io/npm/l/dsh-plugin-pwsh7.svg)](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/LICENSE)
 
 Windows DeepSeek Harness (DSH) bundle that routes the model-facing **`pwsh` tool to PowerShell 7**
 (`pwsh.exe`, major version >= 7) instead of falling back to Windows PowerShell 5.1.
@@ -12,7 +12,7 @@ Windows DeepSeek Harness (DSH) bundle that routes the model-facing **`pwsh` tool
 - When PowerShell 7 is missing, a model-facing **`shell_router`** tool reports status, diagnoses
   sandbox problems, and installs PowerShell 7 per-user (no administrator required).
 
-English | [中文说明](README.zh.md)
+English | [中文说明](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/README.zh.md)
 
 ---
 
@@ -183,4 +183,4 @@ directory `%LOCALAPPDATA%\dsh\pwsh7\` is not deleted automatically.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/LICENSE).
