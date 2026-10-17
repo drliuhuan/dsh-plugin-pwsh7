@@ -1,0 +1,59 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Run `npm publish --dry-run` only (do not publish)'
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish dsh-plugin-pwsh7
+    runs-on: windows-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js and the npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Ensure npm supports OIDC trusted publishing
+        run: npm install --global npm@latest
+
+      - name: Verify the release tag matches package.json
+        if: github.event_name == 'release'
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME -replace '^v', ''
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($tag -ne $version) {
+            throw "Release tag '$env:GITHUB_REF_NAME' does not match package.json version '$version'."
+          }
+          Write-Host "Release tag and package version agree: $version"
+
+      - name: Run the test suite
+        run: npm test
+
+      - name: Publish (dry run)
+        if: github.event_name == 'workflow_dispatch' && inputs.dry_run
+        run: npm publish --dry-run --access public --provenance
+
+      - name: Publish with npm trusted publishing (OIDC)
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        run: npm publish --access public --provenance

@@ -156,6 +156,36 @@ node --test test/paths.test.mjs test/install.test.mjs
 - 设置 `DSH_PWSH7_NETWORK_TESTS=1` 会启用真实 GitHub release / HEAD 校验：30/30 pass。
 - 环境变量覆盖前缀为 `DSH_PWSH7_*`（`APP_ROOT`、`TAR`、`NETWORK_TESTS`）。
 
+## 发布（维护者）
+
+发布由 GitHub Actions 通过 npm **Trusted Publishing**（OIDC）完成——不需要 npm token、OTP 或仓库
+secret。
+
+1. 修改 `package.json` 的 `version`，提交并推送到 `main`。
+2. 创建并推送同名 tag，然后发布对应的 GitHub Release（例如 `v0.2.0`）。
+3. [`.github/workflows/publish.yml`](.github/workflows/publish.yml) 在 `release: published` 时运行：
+   校验 tag 与 `package.json` 版本一致、跑测试、以 provenance 发布
+   （`npm publish --access public --provenance`）。
+
+npm 侧的一次性配置（本仓库已完成）：
+
+```powershell
+npx npm@12 trust github dsh-plugin-pwsh7 `
+  --file publish.yml `
+  --repo drliuhuan/dsh-plugin-pwsh7 `
+  --allow-publish --yes
+```
+
+手动 dry run：**Actions → Publish to npm → Run workflow**，保持 `dry_run` 勾选；工作流只会执行
+`npm publish --dry-run --provenance`，不会真的发布。
+
+仅 `drliuhuan/dsh-plugin-pwsh7` 仓库中的 `publish.yml` 被授权发布。查看或撤销：
+
+```powershell
+npx npm@12 trust list dsh-plugin-pwsh7
+npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
+```
+
 ## 版本说明
 
 `0.1.0` 是第一个公开发布版本。更早的内部迭代（0.2.x/0.3.x）曾包含 MSYS2 bash 路由并使用过

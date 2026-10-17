@@ -165,6 +165,37 @@ node --test test/paths.test.mjs test/install.test.mjs
 - `DSH_PWSH7_NETWORK_TESTS=1` enables the live GitHub release / HEAD checks: 30/30 pass.
 - The environment override prefix is `DSH_PWSH7_*` (`APP_ROOT`, `TAR`, `NETWORK_TESTS`).
 
+## Publishing (maintainers)
+
+Releases are published by GitHub Actions through npm **Trusted Publishing** (OIDC) — no npm token,
+OTP or repository secret is involved.
+
+1. Bump `version` in `package.json`, commit and push to `main`.
+2. Create and push a matching tag and publish a GitHub Release (for example `v0.2.0`).
+3. [`.github/workflows/publish.yml`](.github/workflows/publish.yml) runs on
+   `release: published`, verifies the tag matches `package.json`, runs the test suite, and publishes
+   with provenance (`npm publish --access public --provenance`).
+
+One-time npm-side setup (already configured for this repository):
+
+```powershell
+npx npm@12 trust github dsh-plugin-pwsh7 `
+  --file publish.yml `
+  --repo drliuhuan/dsh-plugin-pwsh7 `
+  --allow-publish --yes
+```
+
+Manual dry run: **Actions → Publish to npm → Run workflow**, keep `dry_run` checked. The workflow
+then runs `npm publish --dry-run --provenance` without publishing.
+
+Only `publish.yml` in `drliuhuan/dsh-plugin-pwsh7` is authorized to publish. Inspect or revoke the
+relationship with:
+
+```powershell
+npx npm@12 trust list dsh-plugin-pwsh7
+npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
+```
+
 ## Versioning note
 
 `0.1.0` is the first public release. Earlier internal iterations (0.2.x/0.3.x) included MSYS2 bash
