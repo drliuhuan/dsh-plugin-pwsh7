@@ -1,23 +1,31 @@
 # dsh-plugin-pwsh7 — bundle patch.
 #
 # Windows only:
-#   Replace the host pwsh executor with one that resolves PowerShell 7 explicitly, keeping the
-#   stock sandbox executor behavior (escalation, denial facts, jobs, output caps).
+#   Mount the router executor in place of the stock pwsh executor. DSH patch semantics treat a
+#   patch entry's `name` as an assertion against the targeted row, not as a replacement, so the
+#   stock row is disabled by id first and the router executor is inserted as its own row.
 #
-# WHY TWO ROWS, AND WHY THE NAMES MATTER:
+# WHY THREE PATCH ENTRIES:
+#   The inserted executor row needs its own id (`pwsh7-executor`): reusing `pwsh-sandbox` would
+#   duplicate a Loader id. Disabling the stock row frees `ctx.shell` for the router executor, which
+#   inherits every stock sandbox behavior (escalation, denial facts, jobs, output caps) and replaces
+#   only executable resolution.
+#
 #   DSH's client-module scanner treats a Loader row as the owner of a browser bundle only when the
 #   row name is a BARE package specifier (`dsh-plugin-pwsh7`), which resolves to the package that
 #   declares `dsh.client`. The executor row is mounted through the `./pwsh-executor` subpath
 #   (`dsh-plugin-pwsh7/pwsh-executor`) and is therefore not a scanner source. Keeping the bare row
 #   is what lets `client.js` compose; dropping it would silently remove the setup dialog.
 #
-# On other platforms the rows are disabled: the stock POSIX composition stays untouched.
+# On other platforms the inserted rows are disabled: the stock POSIX composition stays untouched.
 
 - id: pwsh-sandbox
-  name: 'dsh-plugin-pwsh7/pwsh-executor'
-  disabled: !!js process.platform !== 'win32'
+  disabled: true
 
 - insert:
+    - id: pwsh7-executor
+      name: 'dsh-plugin-pwsh7/pwsh-executor'
+      disabled: !!js process.platform !== 'win32'
     - id: pwsh7-router
       name: 'dsh-plugin-pwsh7'
       disabled: !!js process.platform !== 'win32'

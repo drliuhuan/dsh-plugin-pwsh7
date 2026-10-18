@@ -25,8 +25,10 @@ On Windows, DSH mounts `pwsh-sandbox` as `ctx.shell`, but the resolved executabl
 Windows PowerShell 5.1 in some environments. This bundle keeps the stock PowerShell executor and
 overrides only its `pwshPath` resolution:
 
-1. **Replace the `pwsh-sandbox` row** with `RouterPwshExecutor extends SandboxPwshExecutor`. An
-   explicit `config.pwshPath` still wins; otherwise the plugin-resolved PowerShell 7 is used.
+1. **Take over the `pwsh-sandbox` slot**: a DSH patch entry's `name` asserts the targeted row, it
+   does not replace it, so the stock row is disabled by id and a `RouterPwshExecutor extends
+   SandboxPwshExecutor` row (`id: pwsh7-executor`) is inserted. An explicit `config.pwshPath` still
+   wins; otherwise the plugin-resolved PowerShell 7 is used.
 2. **Insert the bare `dsh-plugin-pwsh7` row**, which registers the `shell_router` tool
    (`status` / `diagnose` / `install`), a small system-prompt section, and the Web setup routes.
    That row's name is also what DSH's client-module scanner uses to discover `client.js`; the
@@ -44,7 +46,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.0
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.1
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -181,7 +183,7 @@ Per-user, no administrator rights:
 | `lib/setup-routes.mjs` | `/pwsh7/state`, `/pwsh7/events` (SSE), `/pwsh7/install`, `/pwsh7/cancel` |
 | `lib/status.mjs` | `status` / `diagnose` implementations |
 | `lib/executors/pwsh.mjs` | PowerShell 7 executor (extends the official `SandboxPwshExecutor`) |
-| `cordis.patch.yml` | Bundle patch: replaces `pwsh-sandbox` and inserts the bare package row (Windows only) |
+| `cordis.patch.yml` | Bundle patch: disables the stock `pwsh-sandbox`, inserts the executor and bare package rows (Windows only) |
 | `locale/en.json`, `locale/zh.json`, `icon.svg` | Plugin-manager display metadata |
 
 `package.json` `files` ships only the runtime pieces; `test/` stays in the repository.

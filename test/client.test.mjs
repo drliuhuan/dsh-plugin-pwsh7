@@ -37,6 +37,10 @@ test('the bundle patch keeps the bare package row that owns the client bundle', 
   // DSH's scanner only accepts a bare specifier as a client source; the subpath row is skipped.
   assert.ok(names.includes('dsh-plugin-pwsh7'));
   assert.ok(names.includes('dsh-plugin-pwsh7/pwsh-executor'));
+  // DSH patch semantics: `name` on an id-targeted entry asserts the row, it does not rename it.
+  // The stock executor is disabled and the router executor is inserted under its own id.
+  assert.match(patch, /- id: pwsh-sandbox\r?\n\s+disabled: true/);
+  assert.match(patch, /- id: pwsh7-executor\r?\n\s+name: 'dsh-plugin-pwsh7\/pwsh-executor'/);
 });
 
 test('client.js is a valid classic script', () => {

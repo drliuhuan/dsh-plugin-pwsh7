@@ -4,6 +4,16 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-10-18
+
+### Fixed
+
+- The bundle patch now disables the stock `pwsh-sandbox` row and inserts the router executor under
+  its own id (`pwsh7-executor`). DSH's patch semantics treat a patch entry's `name` as an assertion
+  against the targeted row, not as a replacement, so the previous id-targeted name change was
+  skipped with a `name mismatch` warning and the `pwsh` tool kept running Windows PowerShell 5.1.
+- `test/client.test.mjs` now asserts the disable-and-insert shape of the bundle patch.
+
 ## [0.2.0] - 2026-10-18
 
 ### Added
@@ -57,6 +67,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bilingual README (English/Chinese), bilingual plugin-manager locale, and a PowerShell 7 icon.
 - 49 unit tests (48 pass, 1 network-gated skip).
 
+[0.2.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/releases/tag/v0.1.0

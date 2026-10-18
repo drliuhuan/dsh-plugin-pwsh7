@@ -23,8 +23,9 @@ Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具
 Windows 预设把 `pwsh-sandbox` 行挂到 `ctx.shell`，但可执行文件解析在部分环境里会落到
 Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` 解析：
 
-1. **替换 `pwsh-sandbox` 行**：`RouterPwshExecutor extends SandboxPwshExecutor`。显式
-   `config.pwshPath` 优先；否则使用插件检测到的 PowerShell 7。
+1. **接管 `pwsh-sandbox` 槽位**：DSH 的 patch 语义里 `name` 是对目标行的断言而不是就地替换，
+   所以先用 id patch 停用官方行，再插入 `RouterPwshExecutor extends SandboxPwshExecutor` 的执行器行
+   （`id: pwsh7-executor`）。显式 `config.pwshPath` 优先；否则使用插件检测到的 PowerShell 7。
 2. **插入裸包名 `dsh-plugin-pwsh7` 行**：注册 `shell_router` 工具（`status` / `diagnose` / `install`）、
    系统提示小节与 Web 安装弹窗路由。这行的裸包名也是 DSH 客户端模块扫描器发现 `client.js` 的依据；
    executor 行的 `./pwsh-executor` 子路径不会被当作客户端 bundle 来源。
@@ -41,7 +42,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 通过 DSH 插件管理器从 npm 安装：
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.0
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.1
 ```
 
 或从本地目录安装（目录安装会链接源码，便于开发）：
@@ -166,7 +167,7 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 | `lib/setup-routes.mjs` | `/pwsh7/state`、`/pwsh7/events`（SSE）、`/pwsh7/install`、`/pwsh7/cancel` |
 | `lib/status.mjs` | `status` / `diagnose` 实现 |
 | `lib/executors/pwsh.mjs` | PowerShell 7 执行器（继承官方 `SandboxPwshExecutor`） |
-| `cordis.patch.yml` | bundle patch：替换 `pwsh-sandbox` 并插入裸包名行（仅 Windows） |
+| `cordis.patch.yml` | bundle patch：停用官方 `pwsh-sandbox`，插入执行器行与裸包名行（仅 Windows） |
 | `locale/en.json`, `locale/zh.json`, `icon.svg` | 插件管理页显示元数据 |
 
 `package.json` 的 `files` 只打包运行所需文件；`test/` 保留在仓库中，不进入 npm 包。
