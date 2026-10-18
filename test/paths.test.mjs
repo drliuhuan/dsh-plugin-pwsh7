@@ -152,7 +152,7 @@ test('findPwsh accepts a symlink/alias-like entry and rejects a directory', (t) 
   assert.equal(fileOrSymlinkExists(realFile), true);
 });
 
-test('versioned portable pwsh installs are discovered newest first', (t) => {
+test('versioned portable pwsh installs are discovered newest first', { skip: process.platform !== 'win32' && 'Requires Windows filesystem separators' }, (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);
   const baseDir = W.join(routerRoot(env), 'powershell7');

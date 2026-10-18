@@ -9,7 +9,7 @@ Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具
 - 执行器继承 DSH 自带 `dsh-pwsh-sandbox` 的全部行为：沙箱模式、`sandbox_permissions` 升权、
   拒绝/runner 失败标记、后台任务、输出上限与 exit marker；本插件只替换可执行文件解析。
 - 找不到 PowerShell 7 时，提供模型可调用的 **`shell_router`** 工具做检测、诊断和
-  **用户级自动下载安装**（默认不需要管理员权限）。
+  **用户级或系统级自动下载安装并写入对应 PATH**（默认用户级，无需管理员权限）。
 - Web GUI 里另有**安装弹窗**：开机检测到缺失时、以及之后**每次 `pwsh` 运行因缺少 PowerShell 7
   失败时**都会弹出，提供下载按钮与实时进度（已下载字节、百分比、阶段）。关闭弹窗不会中断安装，
   下一次失败运行会再次弹出。
@@ -42,7 +42,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 通过 DSH 插件管理器从 npm 安装：
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.1
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.2
 ```
 
 或从本地目录安装（目录安装会链接源码，便于开发）：
@@ -61,7 +61,7 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 |---|---|
 | `status`（默认） | 报告解析到的 PowerShell 7 路径与版本、配置文件、当前沙箱策略、`@deepseek-ai/*` 加载状态。 |
 | `diagnose` | 在**当前沙箱策略**下真实运行 PowerShell 7 命令（版本 + 工作区写入），输出退出码、stdout/stderr、拒绝/runner 失败判定与具体修复建议。 |
-| `install` | 确保 PowerShell 7 可用。`method: "auto"`（默认）优先用户级便携 zip，失败回退 winget；`portable`/`winget` 强制单一方式。已有可用安装时只刷新配置，不会重复下载。 |
+| `install` | 确保 PowerShell 7 可用。`method: "auto"`（默认）优先所选范围的便携 zip，失败回退 winget；`portable`/`winget` 强制单一方式。所选范围已有可用安装时修复 PATH 并刷新配置，不会重复下载。 |
 
 ### 安装弹窗（Web）
 
@@ -69,7 +69,7 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 - **何时弹出**：首次加载时检测不到 `pwsh.exe`；以及之后**每次 `pwsh` 工具因缺少 PowerShell 7
   失败**时（`missingSeq`）。点“稍后”只关闭到下一次失败运行；只要仍然缺失，刷新页面也会再次弹出。
-- **做什么**：点“下载并安装”会启动与 `shell_router install` **同一个**用户级安装任务。弹窗依次显示
+- **做什么**：点“下载并安装”会启动与 `shell_router install` **同一个**安装任务，可选择用户或系统范围。弹窗依次显示
   `下载 → 解压 → 验证`，以及已下载字节、总大小和百分比；“取消下载”可以中止。
 - **为什么只有一个任务**：弹窗和工具共用一个协调器，所以模型触发的安装能在弹窗里看到实时进度，
   弹窗触发的安装也会被工具等待。并发安装会在 `%LOCALAPPDATA%\dsh\pwsh7\tmp` 的同一个压缩包上互相踩踏。
@@ -118,7 +118,21 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 ## 自动安装
 
-默认用户级、无管理员权限：
+可在 Web 弹窗选择范围，或为 `shell_router install` 传入 `scope: "user"`（默认）或 `scope: "system"`。
+
+| 范围 | 安装位置 | 持久 PATH |
+|---|---|---|
+| `user` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | 当前用户（`HKCU\Environment`） |
+| `system` | `%ProgramFiles%\PowerShell\7` | 系统（`HKLM` 环境变量） |
+
+系统安装需要先以管理员身份启动 DSH；权限不足会在下载前报错。用户安装无需提权。两种方式都会保留已有 PATH 及注册表值类型、避免重复添加、刷新宿主进程 PATH，并广播 Windows 环境变量变更。已打开的终端可能需要重新启动。PATH 写入失败会明确报错，不会显示安装成功。
+
+```text
+shell_router action=install scope=user
+shell_router action=install scope=system
+```
+
+便携包来源：
 
 | 组件 | 来源 | 安装位置 |
 |---|---|---|
@@ -129,7 +143,7 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 - 解包后先真实运行一次新 `pwsh.exe` 验证主版本 >= 7，再写入 `config.json`。
 - `auto` 失败回退 `winget install Microsoft.PowerShell`；需要 UAC 提升时返回明确的手动命令，
   不会卡在提权提示上。
-- 不写入安装目录与临时目录以外的位置。
+- winget 使用对应的 `--scope user` 或 `--scope machine`，回退不会改变安装范围。
 - 已在本机实测：下载 106,364,316 字节（约 31s），解压后 244.8 MB，验证为 `7.6.7`。
 
 ## 沙箱
@@ -160,7 +174,7 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 | `client.js` | 浏览器半边：`shell.overlay` 安装弹窗、SSE + 轮询、下载/取消、中英文案 |
 | `lib/shipped.mjs` | 从运行中的 DSH 安装（Electron `app.asar`）加载 `@deepseek-ai/*` 包 |
 | `lib/paths.mjs` | PowerShell 7 路径探测、版本探测、`config.json` 读写 |
-| `lib/install.mjs` | 用户级便携安装（官方 zip）+ winget 回退；进度与阶段回调 |
+| `lib/install.mjs` | 用户/系统级便携安装（官方 zip）+ 同范围 winget 回退；进度与阶段回调 |
 | `lib/state.mjs` | 进程内解析缓存（executor 与工具共用）；缺失运行信号 |
 | `lib/router-features.mjs` | 从裸包名行安装 `shell_router`、系统提示小节、安装协调器与 Web 路由 |
 | `lib/setup-service.mjs` | 安装协调器：同一时刻一个任务、进度快照、取消、`missingSeq` |

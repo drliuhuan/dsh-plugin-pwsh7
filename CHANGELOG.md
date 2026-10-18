@@ -4,6 +4,17 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-10-18
+
+### Added
+
+- User and system installation scopes in the Web dialog, setup API, and `shell_router` tool.
+- System portable installation under Program Files with an administrator preflight check.
+- Persistent user/system PATH updates that preserve registry value kinds and existing entries,
+  avoid duplicates, refresh the host PATH, and broadcast the environment change to Windows.
+- Scope-aware winget fallback and reuse of existing installations, including PATH repair.
+- Windows CI tests and an npm package build command.
+
 ## [0.2.1] - 2026-10-18
 
 ### Fixed

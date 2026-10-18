@@ -10,7 +10,7 @@ Windows DeepSeek Harness (DSH) bundle that routes the model-facing **`pwsh` tool
   `sandbox_permissions` escalation, denial/runner-failure facts, background jobs, output caps, and
   exit markers. It only replaces executable resolution.
 - When PowerShell 7 is missing, a model-facing **`shell_router`** tool reports status, diagnoses
-  sandbox problems, and installs PowerShell 7 per-user (no administrator required).
+  sandbox problems, and installs PowerShell 7 for the current user or the system, with matching PATH updates.
 - In the Web GUI, a **setup dialog** opens whenever PowerShell 7 is missing — on load and again on
   every `pwsh` run — with a download button and live progress (bytes, percent, phase). Closing it
   never cancels an install, and the next failed run re-opens it.
@@ -46,7 +46,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.1
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.2
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -67,7 +67,7 @@ The model-facing `shell_router` tool:
 |---|---|
 | `status` (default) | Resolved PowerShell 7 path and version, config file, current sandbox policy, shipped-package resolution. |
 | `diagnose` | Runs real PowerShell 7 commands under the **current sandbox policy** (version + workspace write) and reports exit codes, stdout/stderr, denial/runner-failure classification, and concrete hints. |
-| `install` | Ensures PowerShell 7 exists. `method: "auto"` (default) prefers the per-user portable zip, then falls back to winget; `portable`/`winget` force one strategy. Existing working installations are reused instead of downloading again. |
+| `install` | Ensures PowerShell 7 exists. `method: "auto"` (default) prefers the portable zip for the selected scope, then falls back to winget; `portable`/`winget` force one strategy. Existing working installations within the selected scope are reused and their PATH is repaired. |
 
 ### Setup dialog (Web)
 
@@ -77,7 +77,7 @@ and in the desktop shell without a second window:
 - **When it opens:** on first load when `pwsh.exe` cannot be found, and again every time a `pwsh`
   tool run fails for that reason (`missingSeq`). "Not now" hides it until the next failed run; a
   page reload opens it again while PowerShell 7 is still missing.
-- **What it does:** `Download and install` starts the same per-user job as `shell_router install`.
+- **What it does:** `Download and install` starts the same scoped installation job as `shell_router install`.
   The dialog shows `downloading → extracting → verifying`, transferred bytes, total, and percent.
   `Cancel download` aborts it.
 - **Why one job:** the dialog and the tool share one coordinator, so a model-triggered install is
@@ -130,7 +130,21 @@ value takes precedence over automatic detection.
 
 ## Automatic installation
 
-Per-user, no administrator rights:
+Choose `scope: "user"` (default) or `scope: "system"` in `shell_router install`, or select the scope in the Web dialog.
+
+| Scope | Destination | Persistent PATH |
+|---|---|---|
+| `user` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | Current user (`HKCU\Environment`) |
+| `system` | `%ProgramFiles%\PowerShell\7` | System (`HKLM` environment) |
+
+System installation requires starting the DSH host as administrator; an unelevated host fails before downloading. User installation needs no elevation. Both preserve existing PATH entries and registry value types, avoid duplicate entries, refresh the host process PATH, and notify Windows. Already running terminals may need reopening. PATH write failures are reported as installation failures.
+
+```text
+shell_router action=install scope=user
+shell_router action=install scope=system
+```
+
+Portable download source:
 
 | Component | Source | Destination |
 |---|---|---|
@@ -143,7 +157,7 @@ Per-user, no administrator rights:
   written into `config.json`.
 - `auto` falls back to `winget install Microsoft.PowerShell`; when elevation would be required the
   result carries the exact manual elevated command instead of hanging on UAC.
-- No writes outside the router root and its temp directory.
+- winget receives `--scope user` or `--scope machine`; fallback never changes the selected scope.
 - Live-tested on Windows: 106,364,316-byte zip downloaded in ~31 s, extracted to 244.8 MB, verified
   `7.6.7`.
 

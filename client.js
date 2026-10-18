@@ -35,7 +35,10 @@
   var EN = {
     title: 'PowerShell 7 is required',
     lead: 'This deployment runs the pwsh tool through PowerShell 7, but pwsh.exe was not found on this machine.',
-    body: 'Download PowerShell 7 into the current user profile. No administrator rights are needed; it installs to {path}.',
+    body: 'Choose an installation scope. The matching user or system PATH will be updated. Install location: {path}.',
+    scopeLabel: 'Installation scope',
+    userScope: 'Current user (no administrator rights)',
+    systemScope: 'System (run DSH as administrator)',
     hint: 'The archive is about 100 MB. Extracting uses the Windows built-in tar.exe; no downloaded installer is executed.',
     download: 'Download and install',
     later: 'Not now',
@@ -66,7 +69,10 @@
   var ZH = {
     title: '需要 PowerShell 7',
     lead: '这个部署会把 pwsh 工具交给 PowerShell 7 执行，但这台电脑上没有找到 pwsh.exe。',
-    body: '可以把 PowerShell 7 下载到当前用户目录，无需管理员权限，安装位置：{path}。',
+    body: '选择安装范围，安装后会写入对应的用户或系统 PATH。安装位置：{path}。',
+    scopeLabel: '安装范围',
+    userScope: '当前用户（无需管理员权限）',
+    systemScope: '系统（请以管理员身份运行 DSH）',
     hint: '压缩包约 100 MB。解压使用 Windows 自带的 tar.exe，不会执行下载来的安装程序。',
     download: '下载并安装',
     later: '稍后',
@@ -248,6 +254,10 @@
     var localError = localErrorState[0];
     var setLocalError = localErrorState[1];
 
+    var scopeState = React.useState('user');
+    var scope = scopeState[0];
+    var setScope = scopeState[1];
+
     var dismissed = React.useRef(0);
     /** True only while the user has hidden a RUNNING install; a new busy phase may re-open it. */
     var suppressBusy = React.useRef(false);
@@ -370,7 +380,7 @@
       if (busy) return;
       setBusy(true);
       setLocalError(null);
-      post(ROUTE_INSTALL, { method: 'auto' })
+      post(ROUTE_INSTALL, { method: 'auto', scope: scope })
         .then(function (data) {
           if (data && data.state) adopt(data.state);
         })
@@ -572,7 +582,7 @@
           interpolate(t('cancelledBody'), { url: releasesUrl })));
       } else {
         body.push(React.createElement('p', { key: 'body', className: 'pwsh7_text' },
-          interpolate(t('body'), { path: host.installRoot || '' })));
+          interpolate(t('body'), { path: (host.installRoots && host.installRoots[scope]) || host.installRoot || '' })));
         body.push(React.createElement('p', { key: 'hint', className: 'pwsh7_hint' }, t('hint')));
         body.push(React.createElement(
           'p',
@@ -585,6 +595,17 @@
           }, t('manual'))
         ));
       }
+    }
+
+    if (!busyPhase(host.phase) && !host.found) {
+      body.push(React.createElement('label', { key: 'scope', className: 'pwsh7_text' },
+        t('scopeLabel'),
+        React.createElement('select', {
+          value: scope, disabled: busy,
+          onChange: function (event) { setScope(event.target.value); }
+        },
+          React.createElement('option', { value: 'user' }, t('userScope')),
+          React.createElement('option', { value: 'system' }, t('systemScope')))));
     }
 
     // Footer -----------------------------------------------------------------

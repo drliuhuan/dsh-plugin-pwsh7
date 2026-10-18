@@ -517,6 +517,7 @@ test('installPowerShell7 portable flow downloads, extracts, verifies, writes con
   };
 
   const result = await installPowerShell7({
+    updatePath: async () => {},
     env,
     root,
     force: true,
@@ -561,6 +562,7 @@ test('installPowerShell7 rejects an archive with a bad signature', async (t) => 
     throw new Error(`unexpected URL ${url}`);
   };
   const result = await installPowerShell7({
+    updatePath: async () => {},
     env,
     root,
     method: 'portable',
@@ -585,6 +587,7 @@ test('installPowerShell7 auto fallback reports unavailable winget without hangin
     throw new Error('network down');
   };
   const result = await installPowerShell7({
+    updatePath: async () => {},
     env,
     root,
     method: 'auto',
@@ -631,9 +634,10 @@ test('installPowerShell7 reuses an existing PowerShell 7 install (method existin
   const base = makeTemp(t);
   const env = makeEnv(base);
   const root = W.join(base, 'router');
-  const existing = W.join(base, 'Program Files', 'PowerShell', '7', 'pwsh.exe');
+  const existing = W.join(env.LOCALAPPDATA, 'Programs', 'PowerShell', '7', 'pwsh.exe');
   writeFile(existing, 'fake');
   const result = await installPowerShell7({
+    updatePath: async () => {},
     env,
     root,
     probePwsh: async () => ({ ok: true, version: '7.6.7', output: '7.6.7' }),
@@ -661,6 +665,7 @@ test('ensurePwsh returns { ok, result, notes, aborted } on a portable install', 
     throw new Error(`unexpected URL ${url}`);
   };
   const outcome = await ensurePwsh({
+    updatePath: async () => {},
     env,
     root,
     method: 'auto',
@@ -688,6 +693,7 @@ test('ensurePwsh reports an aborted signal without installing', async (t) => {
   const controller = new AbortController();
   controller.abort();
   const outcome = await ensurePwsh({
+    updatePath: async () => {},
     env,
     root,
     signal: controller.signal,
@@ -707,6 +713,7 @@ test('ensurePwsh surfaces a failed install result and notes', async (t) => {
   const env = makeEnv(base);
   const root = W.join(base, 'router');
   const outcome = await ensurePwsh({
+    updatePath: async () => {},
     env,
     root,
     method: 'auto',
@@ -752,3 +759,44 @@ test(
     assert.ok(Number.isFinite(length) && length > 1024 * 1024, 'asset should be >1 MiB');
   },
 );
+
+for (const scope of ['user', 'system']) {
+  test(`${scope} portable install writes the matching PATH before recording success`, async (t) => {
+    const base = makeTemp(t);
+    const env = makeEnv(base);
+    const root = W.join(base, 'router');
+    let updated;
+    const result = await installPowerShell7({
+      env, root, scope, force: true, method: 'portable',
+      requireAdministrator: async () => {},
+      updatePath: async (executable, options) => { updated = { executable, scope: options.scope }; },
+      fetchImpl: async (url) => url === PWSH_API_LATEST
+        ? jsonResponse(PWSH_RELEASE_FIXTURE) : streamedResponse(fakeArchive(ZIP_MAGIC)),
+      tarPath: REAL_TAR,
+      extractImpl: fakeExtractForPowerShell([]),
+      probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+    });
+    assert.equal(result.ok, true, result.message);
+    assert.equal(result.scope, scope);
+    assert.deepEqual(updated, { executable: result.path, scope });
+    assert.equal(readRouterConfig(env).installed.pwsh.scope, scope);
+    if (scope === 'system') assert.equal(result.path, W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'));
+  });
+}
+
+test('PATH failure does not report success or trigger a winget fallback', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), force: true,
+    updatePath: async () => { throw new Error('PATH access denied'); },
+    fetchImpl: async (url) => url === PWSH_API_LATEST
+      ? jsonResponse(PWSH_RELEASE_FIXTURE) : streamedResponse(fakeArchive(ZIP_MAGIC)),
+    tarPath: REAL_TAR,
+    extractImpl: fakeExtractForPowerShell([]),
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.message, 'PATH access denied');
+  assert.equal(readRouterConfig(env), undefined);
+});
