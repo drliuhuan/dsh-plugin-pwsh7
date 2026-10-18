@@ -10,6 +10,9 @@ Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具
   拒绝/runner 失败标记、后台任务、输出上限与 exit marker；本插件只替换可执行文件解析。
 - 找不到 PowerShell 7 时，提供模型可调用的 **`shell_router`** 工具做检测、诊断和
   **用户级自动下载安装**（默认不需要管理员权限）。
+- Web GUI 里另有**安装弹窗**：开机检测到缺失时、以及之后**每次 `pwsh` 运行因缺少 PowerShell 7
+  失败时**都会弹出，提供下载按钮与实时进度（已下载字节、百分比、阶段）。关闭弹窗不会中断安装，
+  下一次失败运行会再次弹出。
 
 [English](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/README.md) | 中文
 
@@ -22,8 +25,9 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 
 1. **替换 `pwsh-sandbox` 行**：`RouterPwshExecutor extends SandboxPwshExecutor`。显式
    `config.pwshPath` 优先；否则使用插件检测到的 PowerShell 7。
-2. **注册 `shell_router` 工具**（`status` / `diagnose` / `install`），并附一段描述路由与安装方式的
-   系统提示小节。
+2. **插入裸包名 `dsh-plugin-pwsh7` 行**：注册 `shell_router` 工具（`status` / `diagnose` / `install`）、
+   系统提示小节与 Web 安装弹窗路由。这行的裸包名也是 DSH 客户端模块扫描器发现 `client.js` 的依据；
+   executor 行的 `./pwsh-executor` 子路径不会被当作客户端 bundle 来源。
 
 ## 环境要求
 
@@ -37,7 +41,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 通过 DSH 插件管理器从 npm 安装：
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.1.0
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.0
 ```
 
 或从本地目录安装（目录安装会链接源码，便于开发）：
@@ -57,6 +61,24 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 | `status`（默认） | 报告解析到的 PowerShell 7 路径与版本、配置文件、当前沙箱策略、`@deepseek-ai/*` 加载状态。 |
 | `diagnose` | 在**当前沙箱策略**下真实运行 PowerShell 7 命令（版本 + 工作区写入），输出退出码、stdout/stderr、拒绝/runner 失败判定与具体修复建议。 |
 | `install` | 确保 PowerShell 7 可用。`method: "auto"`（默认）优先用户级便携 zip，失败回退 winget；`portable`/`winget` 强制单一方式。已有可用安装时只刷新配置，不会重复下载。 |
+
+### 安装弹窗（Web）
+
+浏览器半边渲染到 DSH 根级 `shell.overlay` 槽位，因此在普通 Web GUI 和桌面壳里都能用，不需要另开窗口：
+
+- **何时弹出**：首次加载时检测不到 `pwsh.exe`；以及之后**每次 `pwsh` 工具因缺少 PowerShell 7
+  失败**时（`missingSeq`）。点“稍后”只关闭到下一次失败运行；只要仍然缺失，刷新页面也会再次弹出。
+- **做什么**：点“下载并安装”会启动与 `shell_router install` **同一个**用户级安装任务。弹窗依次显示
+  `下载 → 解压 → 验证`，以及已下载字节、总大小和百分比；“取消下载”可以中止。
+- **为什么只有一个任务**：弹窗和工具共用一个协调器，所以模型触发的安装能在弹窗里看到实时进度，
+  弹窗触发的安装也会被工具等待。并发安装会在 `%LOCALAPPDATA%\dsh\pwsh7\tmp` 的同一个压缩包上互相踩踏。
+- **传输**：`GET /pwsh7/state`（快照）、`GET /pwsh7/events`（SSE，进度约 7 帧/秒）、
+  `POST /pwsh7/install`、`POST /pwsh7/cancel`。SSE 负责平滑进度，同时始终保留每 3 秒一次的
+  `/pwsh7/state` 轮询，作为事件流被缓冲时的兜底。这些路由仅限同源，POST 只接受 `application/json`。
+- **失败**：弹窗保留安装器的原始错误，提供“重试”和官方 PowerShell releases 链接；安装失败不影响
+  已有的 `pwsh` 路由，直到某次安装成功。
+- **范围**：弹窗属于 Web GUI。纯 CLI/无头组合仍然可以使用 `shell_router` 工具和同一个安装器，只是
+  没有窗口。
 
 ### 显式指定路径
 
@@ -133,14 +155,18 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 | 路径 | 作用 |
 |---|---|
-| `index.js` | 插件入口：`shell_router` 工具、系统提示小节、配置热重载时刷新检测 |
+| `index.js` | 裸包名行：安装 `shell_router`、系统提示小节、安装弹窗路由与热重载刷新 |
+| `client.js` | 浏览器半边：`shell.overlay` 安装弹窗、SSE + 轮询、下载/取消、中英文案 |
 | `lib/shipped.mjs` | 从运行中的 DSH 安装（Electron `app.asar`）加载 `@deepseek-ai/*` 包 |
 | `lib/paths.mjs` | PowerShell 7 路径探测、版本探测、`config.json` 读写 |
-| `lib/install.mjs` | 用户级便携安装（官方 zip）+ winget 回退 |
-| `lib/state.mjs` | 进程内解析缓存（executor 与工具共用） |
+| `lib/install.mjs` | 用户级便携安装（官方 zip）+ winget 回退；进度与阶段回调 |
+| `lib/state.mjs` | 进程内解析缓存（executor 与工具共用）；缺失运行信号 |
+| `lib/router-features.mjs` | 从裸包名行安装 `shell_router`、系统提示小节、安装协调器与 Web 路由 |
+| `lib/setup-service.mjs` | 安装协调器：同一时刻一个任务、进度快照、取消、`missingSeq` |
+| `lib/setup-routes.mjs` | `/pwsh7/state`、`/pwsh7/events`（SSE）、`/pwsh7/install`、`/pwsh7/cancel` |
 | `lib/status.mjs` | `status` / `diagnose` 实现 |
 | `lib/executors/pwsh.mjs` | PowerShell 7 执行器（继承官方 `SandboxPwshExecutor`） |
-| `cordis.patch.yml` | bundle patch：Windows 上替换 `pwsh-sandbox` 并插入插件行 |
+| `cordis.patch.yml` | bundle patch：替换 `pwsh-sandbox` 并插入裸包名行（仅 Windows） |
 | `locale/en.json`, `locale/zh.json`, `icon.svg` | 插件管理页显示元数据 |
 
 `package.json` 的 `files` 只打包运行所需文件；`test/` 保留在仓库中，不进入 npm 包。
@@ -149,10 +175,10 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 ```powershell
 # 纯 Node 单元测试（不需要 DSH 运行）
-node --test test/paths.test.mjs test/install.test.mjs
+node --test test/paths.test.mjs test/install.test.mjs test/setup.test.mjs test/client.test.mjs
 ```
 
-- 49 tests：48 pass，0 fail，1 skipped（网络用例默认跳过）。
+- 72 tests：71 pass，0 fail，1 skipped（网络用例默认跳过）。
 - 设置 `DSH_PWSH7_NETWORK_TESTS=1` 会启用真实 GitHub release / HEAD 校验：30/30 pass。
 - 环境变量覆盖前缀为 `DSH_PWSH7_*`（`APP_ROOT`、`TAR`、`NETWORK_TESTS`）。
 
@@ -189,10 +215,10 @@ npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
 ## 版本说明
 
 `0.1.0` 是第一个公开发布版本。`0.1.1` 是第一个通过 npm **Trusted Publishing**（OIDC）由
-GitHub Actions 发布的版本，并修正了 npm 页面 README 的跨文件链接。更早的内部迭代
-（0.2.x/0.3.x）曾包含 MSYS2 bash 路由并使用过不同的包名；由于 MSYS2/Cygwin 无法在 DSH Windows
-ACL 沙箱中启动，该部分已被移除。历史实测证据保留在构建工作区的 `sandbox-recon/FINDINGS.md`，
-不在本包内。
+GitHub Actions 发布的版本，并修正了 npm 页面 README 的跨文件链接。`0.2.0` 增加 Web 安装弹窗，
+并把安装收敛到单一协调器。更早的内部迭代（0.2.x/0.3.x）曾包含 MSYS2 bash 路由并使用过不同的包名；
+由于 MSYS2/Cygwin 无法在 DSH Windows ACL 沙箱中启动，该部分已被移除。历史实测证据保留在构建工作区的
+`sandbox-recon/FINDINGS.md`，不在本包内。
 
 ## 卸载
 

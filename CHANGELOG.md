@@ -4,6 +4,34 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-10-18
+
+### Added
+
+- Web setup dialog (`client.js`) in DSH's root `shell.overlay` slot. It opens when PowerShell 7 is
+  missing — on load and again on every failed `pwsh` run — and shows live download bytes, total,
+  percent, and phase (`downloading → extracting → verifying`).
+- `Download and install`, `Cancel download`, `Retry`, and `Done` actions, with English and Chinese
+  copy and DSH theme tokens.
+- `GET /pwsh7/state`, `GET /pwsh7/events` (SSE with a polling fallback), `POST /pwsh7/install`, and
+  `POST /pwsh7/cancel` routes, same-origin and JSON-only for state-changing calls.
+- `lib/setup-service.mjs`: one process-wide install job shared by the dialog and `shell_router`,
+  with progress coalescing, cancellation, phase reporting, and `missingSeq` (the "re-open on every
+  run" signal).
+- Installer phase callbacks (`download`, `extract`, `verify`, `winget`) so the dialog can name the
+  current step, including the winget fallback.
+- `test/setup.test.mjs` and `test/client.test.mjs`: coordinator, route, SSE, packaging, and render
+  smoke coverage (23 new tests).
+
+### Changed
+
+- The routing features moved into `lib/router-features.mjs`, installed by the bare
+  `dsh-plugin-pwsh7` row. That row's name is what DSH's client-module scanner uses to discover
+  `client.js`; the executor row's `./pwsh-executor` subpath is not a client-bundle source.
+- `shell_router install` now starts or joins the shared setup job instead of calling `ensurePwsh`
+  directly; a tool call cancelled mid-install stops only a job that call started.
+- The system-prompt section mentions the Web dialog and its shared job.
+
 ## [0.1.1] - 2026-10-17
 
 ### Changed
@@ -29,5 +57,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bilingual README (English/Chinese), bilingual plugin-manager locale, and a PowerShell 7 icon.
 - 49 unit tests (48 pass, 1 network-gated skip).
 
+[0.2.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/releases/tag/v0.1.0

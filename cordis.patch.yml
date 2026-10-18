@@ -4,6 +4,13 @@
 #   Replace the host pwsh executor with one that resolves PowerShell 7 explicitly, keeping the
 #   stock sandbox executor behavior (escalation, denial facts, jobs, output caps).
 #
+# WHY TWO ROWS, AND WHY THE NAMES MATTER:
+#   DSH's client-module scanner treats a Loader row as the owner of a browser bundle only when the
+#   row name is a BARE package specifier (`dsh-plugin-pwsh7`), which resolves to the package that
+#   declares `dsh.client`. The executor row is mounted through the `./pwsh-executor` subpath
+#   (`dsh-plugin-pwsh7/pwsh-executor`) and is therefore not a scanner source. Keeping the bare row
+#   is what lets `client.js` compose; dropping it would silently remove the setup dialog.
+#
 # On other platforms the rows are disabled: the stock POSIX composition stays untouched.
 
 - id: pwsh-sandbox

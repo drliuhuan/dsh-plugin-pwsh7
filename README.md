@@ -11,6 +11,9 @@ Windows DeepSeek Harness (DSH) bundle that routes the model-facing **`pwsh` tool
   exit markers. It only replaces executable resolution.
 - When PowerShell 7 is missing, a model-facing **`shell_router`** tool reports status, diagnoses
   sandbox problems, and installs PowerShell 7 per-user (no administrator required).
+- In the Web GUI, a **setup dialog** opens whenever PowerShell 7 is missing — on load and again on
+  every `pwsh` run — with a download button and live progress (bytes, percent, phase). Closing it
+  never cancels an install, and the next failed run re-opens it.
 
 English | [中文说明](https://github.com/drliuhuan/dsh-plugin-pwsh7/blob/main/README.zh.md)
 
@@ -24,8 +27,10 @@ overrides only its `pwshPath` resolution:
 
 1. **Replace the `pwsh-sandbox` row** with `RouterPwshExecutor extends SandboxPwshExecutor`. An
    explicit `config.pwshPath` still wins; otherwise the plugin-resolved PowerShell 7 is used.
-2. **Register the `shell_router` tool** (`status` / `diagnose` / `install`) plus a small system-prompt
-   section describing the routing.
+2. **Insert the bare `dsh-plugin-pwsh7` row**, which registers the `shell_router` tool
+   (`status` / `diagnose` / `install`), a small system-prompt section, and the Web setup routes.
+   That row's name is also what DSH's client-module scanner uses to discover `client.js`; the
+   executor row's `./pwsh-executor` subpath is not a client-bundle source.
 
 ## Requirements
 
@@ -39,7 +44,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.1.0
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.0
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -61,6 +66,29 @@ The model-facing `shell_router` tool:
 | `status` (default) | Resolved PowerShell 7 path and version, config file, current sandbox policy, shipped-package resolution. |
 | `diagnose` | Runs real PowerShell 7 commands under the **current sandbox policy** (version + workspace write) and reports exit codes, stdout/stderr, denial/runner-failure classification, and concrete hints. |
 | `install` | Ensures PowerShell 7 exists. `method: "auto"` (default) prefers the per-user portable zip, then falls back to winget; `portable`/`winget` force one strategy. Existing working installations are reused instead of downloading again. |
+
+### Setup dialog (Web)
+
+The browser half renders into DSH's root `shell.overlay` slot, so it works in the ordinary Web GUI
+and in the desktop shell without a second window:
+
+- **When it opens:** on first load when `pwsh.exe` cannot be found, and again every time a `pwsh`
+  tool run fails for that reason (`missingSeq`). "Not now" hides it until the next failed run; a
+  page reload opens it again while PowerShell 7 is still missing.
+- **What it does:** `Download and install` starts the same per-user job as `shell_router install`.
+  The dialog shows `downloading → extracting → verifying`, transferred bytes, total, and percent.
+  `Cancel download` aborts it.
+- **Why one job:** the dialog and the tool share one coordinator, so a model-triggered install is
+  visible in the dialog (with progress) and a dialog-triggered install is awaited by the tool.
+  Concurrent installs would race on the same archive under `%LOCALAPPDATA%\dsh\pwsh7\tmp`.
+- **Transport:** `GET /pwsh7/state` (snapshot), `GET /pwsh7/events` (SSE, progress coalesced to
+  ~7 frames/s), `POST /pwsh7/install`, `POST /pwsh7/cancel`. SSE drives smooth progress; a 3 s
+  `/pwsh7/state` poll stays active as the fallback for carriers that buffer event streams.
+  These routes are same-origin and accept POST bodies only as `application/json`.
+- **Failure:** the dialog keeps the installer's message, offers `Retry`, and links to the official
+  PowerShell releases page. A failed install does not affect `pwsh` routing until one succeeds.
+- **Scope:** the dialog belongs to the Web GUI. A headless/CLI composition still gets the
+  `shell_router` tool and the same installer, just without a window.
 
 ### Explicit paths
 
@@ -142,14 +170,18 @@ Per-user, no administrator rights:
 
 | Path | Role |
 |---|---|
-| `index.js` | Plugin entry: `shell_router` tool, system-prompt section, state refresh on config reload |
+| `index.js` | Bare package row: installs `shell_router`, the system-prompt section, setup routes, and the reload hook |
+| `client.js` | Browser half: `shell.overlay` setup dialog, SSE + polling, download/cancel actions, en/zh copy |
 | `lib/shipped.mjs` | Loads the shipped `@deepseek-ai/*` packages from the running DSH installation (`app.asar`) |
 | `lib/paths.mjs` | PowerShell 7 detection, version probing, `config.json` IO |
-| `lib/install.mjs` | Per-user portable install (official zip) + winget fallback |
-| `lib/state.mjs` | Process-wide resolution cache shared by the executor and the tool |
+| `lib/install.mjs` | Per-user portable install (official zip) + winget fallback; progress and phase callbacks |
+| `lib/state.mjs` | Process-wide resolution cache shared by the executor and the tool; missing-run signal |
+| `lib/router-features.mjs` | Installs `shell_router`, the system-prompt section, the setup coordinator, and routes from the bare package row |
+| `lib/setup-service.mjs` | Single install coordinator: one job, progress snapshots, cancel, `missingSeq` |
+| `lib/setup-routes.mjs` | `/pwsh7/state`, `/pwsh7/events` (SSE), `/pwsh7/install`, `/pwsh7/cancel` |
 | `lib/status.mjs` | `status` / `diagnose` implementations |
 | `lib/executors/pwsh.mjs` | PowerShell 7 executor (extends the official `SandboxPwshExecutor`) |
-| `cordis.patch.yml` | Bundle patch: replaces `pwsh-sandbox` and inserts the plugin row (Windows only) |
+| `cordis.patch.yml` | Bundle patch: replaces `pwsh-sandbox` and inserts the bare package row (Windows only) |
 | `locale/en.json`, `locale/zh.json`, `icon.svg` | Plugin-manager display metadata |
 
 `package.json` `files` ships only the runtime pieces; `test/` stays in the repository.
@@ -158,10 +190,10 @@ Per-user, no administrator rights:
 
 ```powershell
 # Plain Node tests (no running DSH required)
-node --test test/paths.test.mjs test/install.test.mjs
+node --test test/paths.test.mjs test/install.test.mjs test/setup.test.mjs test/client.test.mjs
 ```
 
-- 49 tests: 48 pass, 0 fail, 1 skipped (network-gated by default).
+- 72 tests: 71 pass, 0 fail, 1 skipped (network-gated by default).
 - `DSH_PWSH7_NETWORK_TESTS=1` enables the live GitHub release / HEAD checks: 30/30 pass.
 - The environment override prefix is `DSH_PWSH7_*` (`APP_ROOT`, `TAR`, `NETWORK_TESTS`).
 
@@ -200,6 +232,7 @@ npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
 
 `0.1.0` was the first public release. `0.1.1` is the first release published through npm
 **Trusted Publishing** (OIDC) by GitHub Actions, and fixes the npm-hosted README cross-links.
+`0.2.0` adds the Web setup dialog and moves installation into one shared coordinator.
 Earlier internal iterations (0.2.x/0.3.x) included MSYS2 bash routing and used a different package
 name; that scope was removed because MSYS2/Cygwin cannot start under the DSH Windows ACL sandbox.
 The historical evidence stays in the build workspace (`sandbox-recon/FINDINGS.md`), not in this
