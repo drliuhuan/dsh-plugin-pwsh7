@@ -28,6 +28,20 @@
   var ROUTE_EVENTS = '/pwsh7/events';
   var ROUTE_INSTALL = '/pwsh7/install';
   var ROUTE_CANCEL = '/pwsh7/cancel';
+  /** Maintenance routes used by the Settings page (v0.3.0). */
+  var ROUTE_ROUTE = '/pwsh7/route';
+  var ROUTE_UNINSTALL = '/pwsh7/uninstall';
+  var ROUTE_RELOCATE = '/pwsh7/relocate';
+  var ROUTE_SELFCHECK = '/pwsh7/selfcheck';
+
+  /**
+   * Self-check ids the host reports. The title is always looked up as
+   * `selfcheck.<id>` in this plugin's dictionaries; the server owns `detail`.
+   */
+  var SELFCHECK_IDS = [
+    'plugin-version', 'route', 'executable', 'version', 'config', 'install',
+    'path-env', 'shipped', 'sandbox', 'install-job', 'routes'
+  ];
 
   /** Progress polling remains a safety net for a browser without EventSource. */
   var POLL_MS = 3000;
@@ -58,12 +72,93 @@
     failed: 'PowerShell 7 could not be installed',
     cancelled: 'The download was cancelled',
     cancelledBody: 'You can retry, or install PowerShell 7 yourself from {url}.',
-    offline: 'Could not reach the DSH host. The install may still work from the shell_router tool.',
+    offline: 'Could not reach the DSH host. Retry from this dialog or Settings → PowerShell 7 once the host is back.',
     progress: '{received} / {total} ({percent}%)',
     progressUnknown: 'Downloaded {received}',
     manual: 'Manual download',
     retryHint: 'If the download keeps failing, install PowerShell 7 from {url}, then try again.',
-    pathLabel: 'Install location'
+    pathLabel: 'Install location',
+    // Settings page (settings.section, id `pwsh7`) ---------------------------
+    settingsNav: 'PowerShell 7',
+    settingsTitle: 'PowerShell 7',
+    settingsSubtitle: 'Installation state, routing and maintenance for the PowerShell 7 that this plugin manages.',
+    loading: 'Reading the PowerShell 7 state…',
+    loadFailed: 'Could not read the PowerShell 7 state from the DSH host.',
+    notInstalled: 'Not found',
+    statusReady: 'PowerShell {version}',
+    statusReadyNoVersion: 'PowerShell 7 is ready',
+    sectionInstall: 'Installation',
+    sectionRoute: 'Routing',
+    sectionActions: 'Maintenance',
+    labelPsVersion: 'PowerShell version',
+    labelPath: 'Executable',
+    labelDirectory: 'Install directory',
+    labelScope: 'Installation scope',
+    labelMethod: 'Install method',
+    labelConfig: 'Configuration file',
+    labelManaged: 'Managed by this plugin',
+    labelRemovable: 'Removable from this page',
+    labelUserCopy: 'Per-user copy',
+    labelSystemCopy: 'System-wide copy',
+    labelPathEntry: 'PATH entry present',
+    yes: 'Yes',
+    no: 'No',
+    unknown: 'Unknown',
+    scopeUser: 'Current user',
+    scopeSystem: 'System',
+    methodPortable: 'Portable archive',
+    methodWinget: 'winget',
+    methodAuto: 'Automatic',
+    methodExisting: 'Existing installation',
+    installedNone: 'PowerShell 7 was not found. Install a per-user copy here, or install PowerShell 7 yourself.',
+    routePlugin: 'Plugin-managed',
+    routeSystem: 'System default',
+    routePluginHint: 'Prefers the plugin-managed copy (or DSH_PWSH_PATH), then any PowerShell 7 installed on this machine.',
+    routeSystemHint: 'Uses a system-wide PowerShell 7 only. When none is installed, the pwsh tool falls back to Windows PowerShell 5.1.',
+    routeSystemPath: 'The system default currently resolves to {path}.',
+    routeSystemMissing: 'No system-wide PowerShell 7 was found; the pwsh tool will fall back to Windows PowerShell 5.1.',
+    routeSaving: 'Switching the route…',
+    routeSaved: 'Routing switched to {mode}.',
+    actionInstall: 'Install for current user',
+    actionInstallHint: 'Downloads the portable PowerShell 7 archive (about 100 MB) into the per-user plugin folder. No administrator rights are needed.',
+    actionRelocate: 'Move to system scope',
+    actionRelocateHint: 'Installs PowerShell 7 for all users and removes the per-user copy. DSH must run as administrator.',
+    relocateConfirm: 'Install PowerShell 7 for all users, then remove the per-user copy? This lets every Windows account use it.',
+    relocateConfirmButton: 'Move to system',
+    relocateStarted: 'Moving PowerShell 7 to the system scope…',
+    relocateDone: 'PowerShell 7 is now installed system-wide at {path}.',
+    relocateDoneNoPath: 'PowerShell 7 is now installed system-wide.',
+    relocateRemoved: 'Removed {count} per-user copies.',
+    relocateFailed: 'Moving PowerShell 7 to the system scope failed: {error}',
+    actionUninstall: 'Uninstall per-user copy',
+    actionUninstallHint: 'Removes only the PowerShell 7 copy this plugin installed for the current user, plus its PATH entry.',
+    uninstallConfirm: 'Remove the per-user PowerShell 7 copy and its PATH entry? A system-wide installation is not touched.',
+    uninstallConfirmButton: 'Remove per-user copy',
+    uninstallDone: 'The per-user PowerShell 7 copy was removed.',
+    uninstallWarnings: 'Some files could not be removed:',
+    actionFailed: 'The action failed.',
+    elevationRequired: 'This action needs administrator rights.',
+    elevationHint: 'Restart DSH as administrator, then try again.',
+    busyJob: 'A PowerShell 7 install or removal job is already running.',
+    selfcheckRun: 'Run self-check',
+    selfcheckRunning: 'Checking…',
+    selfcheckSummary: '{ok} ok · {warn} warnings · {fail} failures',
+    selfcheckAt: 'Checked at {time}',
+    selfcheckEmpty: 'Run the self-check to verify the plugin, the installation and the routing.',
+    statusWarn: 'warning',
+    statusFail: 'failed',
+    confirmCancel: 'Cancel',
+    'selfcheck.plugin-version': 'Plugin version',
+    'selfcheck.route': 'Routing mode',
+    'selfcheck.executable': 'pwsh executable',
+    'selfcheck.version': 'PowerShell version',
+    'selfcheck.config': 'Configuration file',
+    'selfcheck.install': 'Installation',
+    'selfcheck.path-env': 'PATH environment',
+    'selfcheck.shipped': 'Bundled executor',
+    'selfcheck.sandbox': 'Sandbox integration',
+    'selfcheck.install-job': 'Install job',
+    'selfcheck.routes': 'HTTP routes'
   };
 
   var ZH = {
@@ -92,12 +187,93 @@
     failed: 'PowerShell 7 安装失败',
     cancelled: '下载已取消',
     cancelledBody: '你可以重试，或者从 {url} 手动安装 PowerShell 7。',
-    offline: '无法连接到 DSH 宿主；也可以让模型调用 shell_router 工具的 install 操作来安装。',
+    offline: '无法连接到 DSH 宿主；恢复后请重试本弹窗或 设置 → PowerShell 7。',
     progress: '{received} / {total}（{percent}%）',
     progressUnknown: '已下载 {received}',
     manual: '手动下载',
     retryHint: '如果下载一直失败，请从 {url} 安装 PowerShell 7，然后重试。',
-    pathLabel: '安装位置'
+    pathLabel: '安装位置',
+    // 设置页（settings.section，id 为 `pwsh7`） -----------------------------
+    settingsNav: 'PowerShell 7',
+    settingsTitle: 'PowerShell 7',
+    settingsSubtitle: '本插件所管理 PowerShell 7 的安装状态、路由方式与维护操作。',
+    loading: '正在读取 PowerShell 7 状态…',
+    loadFailed: '无法从 DSH 宿主读取 PowerShell 7 状态。',
+    notInstalled: '未找到',
+    statusReady: 'PowerShell {version}',
+    statusReadyNoVersion: 'PowerShell 7 已就绪',
+    sectionInstall: '安装信息',
+    sectionRoute: '路由方式',
+    sectionActions: '维护操作',
+    labelPsVersion: 'PowerShell 版本',
+    labelPath: '可执行文件',
+    labelDirectory: '安装目录',
+    labelScope: '安装范围',
+    labelMethod: '安装方式',
+    labelConfig: '配置文件',
+    labelManaged: '由本插件托管',
+    labelRemovable: '可在此卸载',
+    labelUserCopy: '当前用户副本',
+    labelSystemCopy: '系统副本',
+    labelPathEntry: '已加入 PATH',
+    yes: '是',
+    no: '否',
+    unknown: '未知',
+    scopeUser: '当前用户',
+    scopeSystem: '系统',
+    methodPortable: '便携压缩包',
+    methodWinget: 'winget',
+    methodAuto: '自动',
+    methodExisting: '已有安装',
+    installedNone: '没有找到 PowerShell 7。可以在这里安装当前用户副本，或自行安装 PowerShell 7。',
+    routePlugin: '插件托管',
+    routeSystem: '系统默认',
+    routePluginHint: '优先使用插件托管的副本或 DSH_PWSH_PATH，其次是本机已安装的 PowerShell 7。',
+    routeSystemHint: '只使用系统范围的 PowerShell 7。本机没有安装时，pwsh 工具会回退到 Windows PowerShell 5.1。',
+    routeSystemPath: '系统默认目前解析到 {path}。',
+    routeSystemMissing: '没有找到系统范围的 PowerShell 7，pwsh 工具将回退到 Windows PowerShell 5.1。',
+    routeSaving: '正在切换路由…',
+    routeSaved: '已切换到{mode}。',
+    actionInstall: '为当前用户安装',
+    actionInstallHint: '把约 100 MB 的便携版 PowerShell 7 下载到当前用户的插件目录，无需管理员权限。',
+    actionRelocate: '迁移到系统范围',
+    actionRelocateHint: '为所有用户安装 PowerShell 7 并删除当前用户副本。DSH 需要以管理员身份运行。',
+    relocateConfirm: '为所有用户安装 PowerShell 7，然后删除当前用户副本？这样每个 Windows 账户都能使用。',
+    relocateConfirmButton: '迁移到系统',
+    relocateStarted: '正在把 PowerShell 7 迁移到系统范围…',
+    relocateDone: 'PowerShell 7 已安装到系统范围：{path}。',
+    relocateDoneNoPath: 'PowerShell 7 已安装到系统范围。',
+    relocateRemoved: '已删除 {count} 个当前用户副本。',
+    relocateFailed: '把 PowerShell 7 迁移到系统范围失败：{error}',
+    actionUninstall: '卸载当前用户副本',
+    actionUninstallHint: '只删除本插件为当前用户安装的 PowerShell 7 及其 PATH 项。',
+    uninstallConfirm: '删除当前用户的 PowerShell 7 副本及其 PATH 项？系统范围的安装不受影响。',
+    uninstallConfirmButton: '删除当前用户副本',
+    uninstallDone: '当前用户的 PowerShell 7 副本已删除。',
+    uninstallWarnings: '以下文件未能删除：',
+    actionFailed: '操作失败。',
+    elevationRequired: '此操作需要管理员权限。',
+    elevationHint: '请以管理员身份重新启动 DSH，然后重试。',
+    busyJob: '已有 PowerShell 7 安装或删除任务在运行。',
+    selfcheckRun: '运行自检',
+    selfcheckRunning: '正在检查…',
+    selfcheckSummary: '{ok} 项正常 · {warn} 项警告 · {fail} 项失败',
+    selfcheckAt: '检查时间：{time}',
+    selfcheckEmpty: '运行自检以检查插件、安装与路由配置。',
+    statusWarn: '警告',
+    statusFail: '失败',
+    confirmCancel: '取消',
+    'selfcheck.plugin-version': '插件版本',
+    'selfcheck.route': '路由方式',
+    'selfcheck.executable': 'pwsh 可执行文件',
+    'selfcheck.version': 'PowerShell 版本',
+    'selfcheck.config': '配置文件',
+    'selfcheck.install': '安装状态',
+    'selfcheck.path-env': 'PATH 环境变量',
+    'selfcheck.shipped': '内置执行器',
+    'selfcheck.sandbox': '沙箱集成',
+    'selfcheck.install-job': '安装任务',
+    'selfcheck.routes': 'HTTP 路由'
   };
 
   /**
@@ -158,6 +334,76 @@
     '.pwsh7_ghost:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}',
     '.pwsh7_link{color:var(--dsw-alias-link);text-decoration:none;font-weight:500;word-break:break-all}',
     '.pwsh7_link:hover{text-decoration:underline dotted;text-underline-offset:3px}',
+    // Settings page (`settings.section`, id `pwsh7`) --------------------------
+    '.pwsh7_setRoot{box-sizing:border-box;height:100%;display:flex;flex-direction:column;min-width:0;',
+    'color:var(--dsw-alias-label-primary)}',
+    '.pwsh7_setScroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 4px 48px;scroll-padding-bottom:48px;',
+    '--dsh-scrollbar-thumb:var(--dsw-alias-scrollbar-bg-l2);--dsh-scrollbar-thumb-hover:var(--dsw-alias-scrollbar-hover-l2)}',
+    '.pwsh7_setInner{box-sizing:border-box;width:100%;max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}',
+    '.pwsh7_setHead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;padding:4px 4px 0}',
+    '.pwsh7_setTitle{margin:0;font-size:16px;line-height:24px;font-weight:500}',
+    '.pwsh7_setSubtitle{flex:1 1 100%;margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+    '.pwsh7_badge{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11px;line-height:20px;',
+    'font-variant-numeric:tabular-nums;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);white-space:nowrap}',
+    '.pwsh7_badge[data-tone=success]{background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_badge[data-tone=error]{background:var(--dsw-static-red-600-a08);color:var(--dsw-alias-state-error-primary)}',
+    '.pwsh7_card{box-sizing:border-box;display:flex;flex-direction:column;gap:10px;min-width:0;padding:14px 16px;',
+    'border:1px solid var(--dsw-alias-settings-card-stroke);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-settings-card-fill)}',
+    '.pwsh7_cardHead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}',
+    '.pwsh7_cardTitle{margin:0;font-size:14px;line-height:22px;font-weight:500}',
+    '.pwsh7_rows{display:flex;flex-direction:column;gap:6px;margin:0;padding:0}',
+    '.pwsh7_row{display:grid;grid-template-columns:minmax(120px,170px) minmax(0,1fr);gap:8px 12px;align-items:baseline;min-width:0;margin:0}',
+    '.pwsh7_rowLabel{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+    '.pwsh7_rowValue{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary);word-break:break-word}',
+    '.pwsh7_rowValue[data-mono=true]{font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;',
+    'color:var(--dsw-alias-label-secondary);word-break:break-all}',
+    '.pwsh7_flags{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0}',
+    '.pwsh7_flag{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:999px;',
+    'border:.5px solid var(--dsw-alias-border-l2);font-size:11px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+    '.pwsh7_flag[data-on=true]{border-color:var(--dsw-alias-border-l3);color:var(--dsw-alias-label-secondary)}',
+    '.pwsh7_flagDot{width:6px;height:6px;border-radius:999px;background:var(--dsw-alias-state-idle-primary)}',
+    '.pwsh7_flag[data-on=true] .pwsh7_flagDot{background:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_empty{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-tertiary)}',
+    '.pwsh7_seg{display:inline-flex;flex-wrap:wrap;gap:2px;padding:2px;border-radius:var(--dsw-radius-md);',
+    'background:var(--dsw-alias-bg-module-platform)}',
+    '.pwsh7_segBtn{box-sizing:border-box;height:28px;padding:0 12px;border:0;border-radius:calc(var(--dsw-radius-md) - 2px);',
+    'background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:28px;',
+    'cursor:pointer;white-space:nowrap}',
+    '.pwsh7_segBtn:hover:not(:disabled){color:var(--dsw-alias-label-primary)}',
+    '.pwsh7_segBtn[data-on=true]{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);',
+    'box-shadow:var(--dsw-elevation-soft)}',
+    '.pwsh7_segBtn:disabled{opacity:.5;cursor:not-allowed}',
+    '.pwsh7_segBtn:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}',
+    '.pwsh7_actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}',
+    '.pwsh7_actionHint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+    '.pwsh7_confirm{display:flex;flex-direction:column;gap:8px;padding:10px 12px;',
+    'border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-base)}',
+    '.pwsh7_confirmText{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+    '.pwsh7_danger{color:var(--dsw-alias-state-error-primary)}',
+    '.pwsh7_danger:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-danger)}',
+    '.pwsh7_notice{margin:0;padding:8px 10px;border-radius:var(--dsw-radius-md);font-size:12px;line-height:18px;',
+    'background:var(--dsw-alias-state-success-tertiary);color:var(--dsw-alias-state-success-primary);word-break:break-word}',
+    '.pwsh7_warnBox{margin:0;padding:8px 10px;border-radius:var(--dsw-radius-md);font-size:12px;line-height:18px;',
+    'background:var(--dsw-alias-state-warn-tertiary);color:var(--dsw-alias-state-warn-primary);word-break:break-word}',
+    '.pwsh7_warnList{margin:4px 0 0;padding:0 0 0 18px;font-family:var(--ds-font-family-code);font-size:11px;line-height:17px}',
+    '.pwsh7_detailList{margin:4px 0 0;padding:0 0 0 18px;font-family:var(--ds-font-family-code);font-size:11px;line-height:17px;',
+    'color:var(--dsw-alias-label-secondary);word-break:break-all}',
+    '.pwsh7_errorBox{display:flex;flex-direction:column;gap:4px;margin:0;padding:8px 10px;border-radius:var(--dsw-radius-md);',
+    'background:var(--dsw-static-red-600-a08);color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px;word-break:break-word}',
+    '.pwsh7_checks{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}',
+    '.pwsh7_check{display:flex;align-items:flex-start;gap:8px;min-width:0}',
+    '.pwsh7_checkDot{flex:none;width:7px;height:7px;margin-top:7px;border-radius:999px;background:var(--dsw-alias-state-idle-primary)}',
+    '.pwsh7_check[data-status=ok] .pwsh7_checkDot{background:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_check[data-status=warn] .pwsh7_checkDot{background:var(--dsw-alias-state-warn-primary)}',
+    '.pwsh7_check[data-status=fail] .pwsh7_checkDot{background:var(--dsw-alias-state-error-primary)}',
+    '.pwsh7_checkBody{display:flex;flex-direction:column;gap:1px;min-width:0}',
+    '.pwsh7_checkTitle{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}',
+    '.pwsh7_checkTitle[data-status=warn]{color:var(--dsw-alias-state-warn-label)}',
+    '.pwsh7_checkTitle[data-status=fail]{color:var(--dsw-alias-state-error-primary)}',
+    '.pwsh7_checkDetail{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);overflow-wrap:anywhere}',
+    '.pwsh7_summary{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);font-variant-numeric:tabular-nums}',
+    '.pwsh7_selfHead{display:flex;align-items:center;flex-wrap:wrap;gap:8px}',
+    '@media (max-width:560px){.pwsh7_row{grid-template-columns:1fr;gap:2px 0}.pwsh7_setInner{max-width:none}}',
     '@keyframes pwsh7_fade{0%{opacity:0}to{opacity:1}}',
     '@keyframes pwsh7_indeterminate{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}',
     '@media (prefers-reduced-motion:reduce){.pwsh7_mask,.pwsh7_dialog,.pwsh7_progress[data-indeterminate=true] .pwsh7_bar{animation:none}',
@@ -223,6 +469,139 @@
 
   function onlineFetch(url, options) {
     return fetch(url, options);
+  }
+
+  /** Local time for a self-check `checkedAt`, degrading to the raw server string. */
+  function formatCheckedAt(value) {
+    try {
+      var date = new Date(String(value));
+      if (isNaN(date.getTime())) return String(value);
+      return date.toLocaleString();
+    } catch (error) {
+      return String(value);
+    }
+  }
+
+  /** Contract order for self-check ids, so the page never reorders the host's answer. */
+  function selfcheckRank(id) {
+    var at = SELFCHECK_IDS.indexOf(id);
+    return at === -1 ? SELFCHECK_IDS.length : at;
+  }
+
+  function textOrNull(value) {
+    return typeof value === 'string' && value.length > 0 ? value : null;
+  }
+
+  /**
+   * Normalize one `/pwsh7/state` snapshot into the view model the Settings page renders.
+   *
+   * The contract's extended fields are read first; a host that has not restarted with the new
+   * version still sends the older dialogs fields, so `found`/`path`/`version` remain the fallback
+   * and the page degrades to "unknown" instead of throwing.
+   *
+   * @param {object|null} raw
+   * @returns {object|null}
+   */
+  function readState(raw) {
+    if (raw === null || typeof raw !== 'object') return null;
+    var install = raw.install !== null && typeof raw.install === 'object' ? raw.install : null;
+    var elevation = raw.elevation !== null && typeof raw.elevation === 'object' ? raw.elevation : null;
+    return {
+      raw: raw,
+      pluginVersion: textOrNull(raw.pluginVersion),
+      found: install !== null && typeof install.exists === 'boolean' ? install.exists : raw.found === true,
+      version: install !== null ? textOrNull(install.version) : textOrNull(raw.version),
+      path: install !== null ? textOrNull(install.path) : textOrNull(raw.path),
+      directory: install !== null ? textOrNull(install.directory) : null,
+      scope: install !== null && (install.scope === 'user' || install.scope === 'system') ? install.scope : null,
+      method: install !== null ? textOrNull(install.method) : null,
+      managed: install !== null && install.managed === true,
+      removable: install !== null && install.removable === true,
+      userCopy: install !== null && install.userCopy === true,
+      systemCopy: install !== null && install.systemCopy === true,
+      pathEntry: install !== null && install.pathEntry === true,
+      configPath: textOrNull(raw.configPath),
+      route: raw.route === 'system' ? 'system' : 'plugin',
+      routeConfigured: raw.routeConfigured === true,
+      systemPath: textOrNull(raw.systemPath),
+      elevationAvailable: elevation !== null && elevation.available === true,
+      elevationRequired: elevation === null || elevation.requiredForSystem !== false,
+      busy: raw.busy === true,
+      phase: typeof raw.phase === 'string' ? raw.phase : 'idle',
+      percent: typeof raw.percent === 'number' ? raw.percent : null,
+      received: typeof raw.received === 'number' ? raw.received : 0,
+      total: typeof raw.total === 'number' && raw.total > 0 ? raw.total : null,
+      message: textOrNull(raw.message),
+      error: textOrNull(raw.error),
+      installRoot: textOrNull(raw.installRoot),
+      result: raw.result !== null && typeof raw.result === 'object' ? raw.result : null
+    };
+  }
+
+  /** String values from a server array, dropping anything else. */
+  function stringList(value) {
+    if (!Array.isArray(value)) return [];
+    return value.filter(function (entry) {
+      return typeof entry === 'string' && entry.length > 0;
+    });
+  }
+
+  /**
+   * A stable identity for one `state.relocate` outcome.
+   *
+   * The snapshot is rebuilt on every event, so object identity cannot answer "have I already shown
+   * this result?". The signature can: identical content means the same finished relocation, while a
+   * later relocation (or a different outcome) changes it and earns one fresh notice.
+   *
+   * @param {object|null|undefined} relocate
+   * @returns {string|null}
+   */
+  function relocateSignature(relocate) {
+    if (relocate === null || typeof relocate !== 'object') return null;
+    return JSON.stringify([
+      relocate.ok === true,
+      relocate.relocated === true,
+      textOrNull(relocate.systemPath),
+      textOrNull(relocate.error),
+      stringList(relocate.removedUserCopy),
+      stringList(relocate.warnings)
+    ]);
+  }
+
+  /**
+   * Translate the host's finished relocation into one page notice.
+   *
+   * `state.relocate` is `{ok, relocated, systemPath, removedUserCopy, warnings, error?}` and is NOT
+   * cleared by later state frames, so the page renders it exactly once (see `relocateSignature`)
+   * instead of letting every event re-announce the same outcome.
+   *
+   * @param {Function} t the page translator.
+   * @param {object|null|undefined} relocate
+   * @returns {{text: string, warnings: string[], details: string[]}|null}
+   */
+  function relocateNoticeFor(t, relocate) {
+    if (relocate === null || typeof relocate !== 'object') return null;
+    var removed = stringList(relocate.removedUserCopy);
+    var warnings = stringList(relocate.warnings);
+    var systemPath = textOrNull(relocate.systemPath);
+    var succeeded = relocate.ok === true || relocate.relocated === true;
+    if (succeeded) {
+      var done = systemPath !== null
+        ? interpolate(t('relocateDone'), { path: systemPath })
+        : t('relocateDoneNoPath');
+      if (removed.length > 0) {
+        done += ' ' + interpolate(t('relocateRemoved'), { count: removed.length });
+      }
+      return { text: done, warnings: warnings, details: removed };
+    }
+    // A record with no verdict at all says nothing worth a notice.
+    var error = textOrNull(relocate.error);
+    if (error === null && relocate.ok !== false) return null;
+    return {
+      text: interpolate(t('relocateFailed'), { error: error === null ? t('actionFailed') : error }),
+      warnings: warnings,
+      details: []
+    };
   }
 
   //#endregion
@@ -719,6 +1098,745 @@
     );
   }
 
+  //#region settings page -----------------------------------------------------
+
+  /**
+   * The plugin's Settings page, registered into the `settings.section` slot (id `pwsh7`, order 80).
+   *
+   * The host gives a section the content area only — no card wrapper — so this component draws its
+   * own header, cards and scrolling region, like every other third-party settings section. It reads
+   * the SAME live snapshot the setup dialog uses (`/pwsh7/state`, `/pwsh7/events` with the 3 s poll
+   * as the fallback), so an install, a relocation or a removal that is running in the host is
+   * visible here while it happens, and every action adopts the state the server returns.
+   *
+   * Only `react` is available to this bundle: everything below is `React.createElement` plus the
+   * classic-script style of the rest of this file. Copy lives in the `pwsh7` dictionaries.
+   *
+   * @param {object} props owner props; `t` is bound by the `settings.section` inject.
+   * @returns {object} the page tree.
+   */
+  function Pwsh7Settings(props) {
+    var t = typeof props.t === 'function' ? props.t : fallbackTranslate;
+
+    var hostState = React.useState(null);
+    var host = readState(hostState[0]);
+    var setHost = hostState[1];
+
+    /** `{message, hint, requiresElevation, warnings}` for the last failed request. */
+    var errorState = React.useState(null);
+    var actionError = errorState[0];
+    var setActionError = errorState[1];
+
+    /** Which local request is in flight: route | install | relocate | uninstall | selfcheck. */
+    var busyState = React.useState(null);
+    var busyAction = busyState[0];
+    var setBusyAction = busyState[1];
+
+    /** Which inline confirmation is open: relocate | uninstall | null. */
+    var confirmState = React.useState(null);
+    var confirming = confirmState[0];
+    var setConfirming = confirmState[1];
+
+    /** The last `/pwsh7/selfcheck` response, or null before the first run. */
+    var checkState = React.useState(null);
+    var selfcheck = checkState[0];
+    var setSelfcheck = checkState[1];
+
+    /** `{text, warnings}` for the last successful action. */
+    var noticeState = React.useState(null);
+    var notice = noticeState[0];
+    var setNotice = noticeState[1];
+
+    var mounted = React.useRef(true);
+    var serial = React.useRef(0);
+    var pollTimer = React.useRef(null);
+    var source = React.useRef(null);
+    var hadState = React.useRef(false);
+    /** Signature of the `state.relocate` outcome already turned into a notice. */
+    var relocateSeen = React.useRef(null);
+
+    /** Adopt one host snapshot; the serial guard drops a stale poll response. */
+    function adopt(next) {
+      if (!mounted.current) return;
+      if (next === null || typeof next !== 'object') return;
+      serial.current += 1;
+      // A "could not reach the host" message belongs to the loading surface only; the first real
+      // snapshot retires it. Later action failures keep their own message.
+      var firstState = hadState.current !== true;
+      hadState.current = true;
+      if (firstState) setActionError(null);
+      // A finished relocation reports through state, not through the 202 that started it: show the
+      // system executable, the removed user copies and any warnings once the job settles.
+      var signature = relocateSignature(next.relocate);
+      if (signature !== null && signature !== relocateSeen.current) {
+        var relocationNotice = relocateNoticeFor(t, next.relocate);
+        if (relocationNotice !== null) {
+          relocateSeen.current = signature;
+          setNotice(relocationNotice);
+        }
+      }
+      setHost(next);
+    }
+
+    function refresh() {
+      var ticket = (serial.current += 1);
+      onlineFetch(ROUTE_STATE, { cache: 'no-store', credentials: 'omit' })
+        .then(function (response) {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        })
+        .then(function (next) {
+          if (ticket === serial.current) adopt(next);
+        })
+        .catch(function () {
+          if (!mounted.current || hadState.current) return;
+          setActionError({
+            message: t('loadFailed'),
+            hint: null,
+            requiresElevation: false,
+            warnings: []
+          });
+        });
+    }
+
+    function stopPolling() {
+      if (pollTimer.current !== null) {
+        clearInterval(pollTimer.current);
+        pollTimer.current = null;
+      }
+    }
+
+    function startPolling() {
+      if (pollTimer.current !== null) return;
+      pollTimer.current = setInterval(refresh, POLL_MS);
+    }
+
+    function connectEvents() {
+      if (typeof EventSource !== 'function') {
+        startPolling();
+        return;
+      }
+      try {
+        source.current = new EventSource(ROUTE_EVENTS);
+      } catch (error) {
+        startPolling();
+        return;
+      }
+      source.current.addEventListener('state', function (event) {
+        try {
+          adopt(JSON.parse(event.data));
+        } catch (error) {
+          // A malformed frame is not worth a broken page; polling still covers the state.
+        }
+      });
+      source.current.onerror = function () {
+        // EventSource reconnects on its own; the always-on poll keeps progress moving if not.
+        startPolling();
+      };
+    }
+
+    /** POST JSON and reject with the server's `error`/`hint` attached, so 412 can be rendered. */
+    function postJson(url, body) {
+      return onlineFetch(url, {
+        method: 'POST',
+        credentials: 'omit',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body || {})
+      }).then(function (response) {
+        return response.json().then(function (data) {
+          var payload = data !== null && typeof data === 'object' ? data : {};
+          if (!response.ok || payload.ok === false) {
+            var failure = new Error(textOrNull(payload.error) || ('HTTP ' + response.status));
+            failure.status = response.status;
+            failure.payload = payload;
+            throw failure;
+          }
+          return payload;
+        }, function () {
+          // A non-JSON body (proxy page, host gone): the status is still worth showing.
+          throw new Error('HTTP ' + response.status);
+        });
+      });
+    }
+
+    /**
+     * Run one action with the page-wide busy guard, then clear it. Every rejection becomes the
+     * inline error block; an HTTP 412 (elevation required) is marked so the hint is rendered.
+     */
+    function runAction(label, work) {
+      if (busyAction !== null || (host !== null && host.busy)) return;
+      setBusyAction(label);
+      setActionError(null);
+      setNotice(null);
+      setConfirming(null);
+      // A new action supersedes the previous relocation report: mark the outcome currently in the
+      // snapshot as seen, so only a NEWER relocation can raise a notice again.
+      if (host !== null && host.raw !== null && typeof host.raw === 'object') {
+        relocateSeen.current = relocateSignature(host.raw.relocate);
+      }
+      Promise.resolve()
+        .then(work)
+        .catch(function (error) {
+          if (!mounted.current) return;
+          var failure = error !== null && typeof error === 'object' ? error : {};
+          var payload = failure.payload !== null && typeof failure.payload === 'object' ? failure.payload : {};
+          setActionError({
+            message: textOrNull(failure.message) || t('actionFailed'),
+            hint: textOrNull(payload.hint),
+            requiresElevation: payload.requiresElevation === true || failure.status === 412,
+            warnings: Array.isArray(payload.warnings)
+              ? payload.warnings.filter(function (entry) { return typeof entry === 'string'; })
+              : []
+          });
+        })
+        .then(function () {
+          if (mounted.current) setBusyAction(null);
+        });
+    }
+
+    function swapRoute(mode) {
+      if (host === null || host.route === mode) return;
+      runAction('route', function () {
+        return postJson(ROUTE_ROUTE, { mode: mode }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+          if (mounted.current) {
+            setNotice({
+              text: interpolate(t('routeSaved'), { mode: t(mode === 'system' ? 'routeSystem' : 'routePlugin') }),
+              warnings: []
+            });
+          }
+        });
+      });
+    }
+
+    function startInstall() {
+      runAction('install', function () {
+        return postJson(ROUTE_INSTALL, { method: 'auto', scope: 'user' }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+        });
+      });
+    }
+
+    function startRelocate() {
+      runAction('relocate', function () {
+        return postJson(ROUTE_RELOCATE, { removeUser: true, method: 'auto' }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+          if (mounted.current) setNotice({ text: t('relocateStarted'), warnings: [] });
+        });
+      });
+    }
+
+    function startUninstall() {
+      runAction('uninstall', function () {
+        return postJson(ROUTE_UNINSTALL, { confirm: true, scope: 'user' }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+          var warnings = Array.isArray(data.warnings)
+            ? data.warnings.filter(function (entry) { return typeof entry === 'string'; })
+            : [];
+          if (mounted.current) setNotice({ text: t('uninstallDone'), warnings: warnings });
+        });
+      });
+    }
+
+    function runSelfcheck() {
+      runAction('selfcheck', function () {
+        return postJson(ROUTE_SELFCHECK, {}).then(function (data) {
+          if (mounted.current) setSelfcheck(data);
+        });
+      });
+    }
+
+    React.useEffect(function () {
+      mounted.current = true;
+      refresh();
+      // Poll unconditionally: SSE gives smooth progress, the poll is the safety net for a carrier
+      // that buffers the stream. The setup dialog does the same, and both may be mounted at once.
+      startPolling();
+      connectEvents();
+      return function () {
+        mounted.current = false;
+        stopPolling();
+        if (source.current !== null) {
+          try {
+            source.current.close();
+          } catch (error) {
+            // Already closed.
+          }
+          source.current = null;
+        }
+      };
+    }, []);
+
+    /** One label/value row; `mono` marks paths and configuration values. */
+    function row(key, label, value, mono) {
+      return React.createElement(
+        'div',
+        { key: key, className: 'pwsh7_row' },
+        React.createElement('span', { key: 'label', className: 'pwsh7_rowLabel' }, label),
+        React.createElement('span', {
+          key: 'value',
+          className: 'pwsh7_rowValue',
+          'data-mono': mono === true ? 'true' : undefined
+        }, value)
+      );
+    }
+
+    /** One boolean flag chip, with an explicit yes/no so absence never reads as "off". */
+    function flag(key, label, on) {
+      return React.createElement(
+        'span',
+        { key: key, className: 'pwsh7_flag', 'data-on': on ? 'true' : 'false' },
+        React.createElement('span', { key: 'dot', className: 'pwsh7_flagDot', 'aria-hidden': 'true' }),
+        label + ': ' + (on ? t('yes') : t('no'))
+      );
+    }
+
+    function scopeLabel(scope) {
+      if (scope === 'user') return t('scopeUser');
+      if (scope === 'system') return t('scopeSystem');
+      return t('unknown');
+    }
+
+    function methodLabel(method) {
+      if (method === 'portable') return t('methodPortable');
+      if (method === 'winget') return t('methodWinget');
+      if (method === 'auto') return t('methodAuto');
+      if (method === 'existing') return t('methodExisting');
+      return method === null ? t('unknown') : method;
+    }
+
+    /** The inline failure block: server message, an elevation hint for 412, warnings for uninstall. */
+    function errorBlock(key, failure) {
+      var children = [];
+      if (failure.requiresElevation) {
+        children.push(React.createElement('p', { key: 'elevation', className: 'pwsh7_rowValue' }, t('elevationRequired')));
+      }
+      children.push(React.createElement('p', { key: 'message', className: 'pwsh7_rowValue' }, failure.message));
+      if (failure.hint !== null && failure.hint !== undefined) {
+        children.push(React.createElement('p', { key: 'hint', className: 'pwsh7_hint' }, failure.hint));
+      }
+      if (failure.requiresElevation) {
+        children.push(React.createElement('p', { key: 'elevation-hint', className: 'pwsh7_hint' }, t('elevationHint')));
+      }
+      if (Array.isArray(failure.warnings) && failure.warnings.length > 0) {
+        children.push(React.createElement('p', { key: 'warnings', className: 'pwsh7_hint' }, t('uninstallWarnings')));
+        children.push(React.createElement(
+          'ul',
+          { key: 'warning-list', className: 'pwsh7_warnList' },
+          failure.warnings.map(function (entry, index) {
+            return React.createElement('li', { key: 'warning-' + index }, entry);
+          })
+        ));
+      }
+      return React.createElement('div', { key: key, className: 'pwsh7_errorBox', role: 'alert' }, children);
+    }
+
+    function actionButton(key, label, action, options) {
+      var extra = options !== null && typeof options === 'object' ? options : {};
+      return React.createElement('button', {
+        key: key,
+        type: 'button',
+        className: 'pwsh7_button ' + (extra.danger === true ? 'pwsh7_outline pwsh7_danger' : 'pwsh7_outline'),
+        'data-action': action,
+        disabled: extra.disabled === true,
+        onClick: extra.onClick
+      }, label);
+    }
+
+    function routeButton(mode, label, on, disabled) {
+      return React.createElement('button', {
+        key: 'route-' + mode,
+        type: 'button',
+        className: 'pwsh7_segBtn',
+        'data-action': 'route-' + mode,
+        'data-on': on ? 'true' : 'false',
+        'aria-pressed': on ? 'true' : 'false',
+        disabled: disabled,
+        onClick: function () { swapRoute(mode); }
+      }, label);
+    }
+
+    // Loading / unreachable host -------------------------------------------------
+    if (host === null) {
+      var loadingHead = React.createElement(
+        'div',
+        { key: 'head', className: 'pwsh7_setHead' },
+        React.createElement('h2', { key: 'title', className: 'pwsh7_setTitle' }, t('settingsTitle')),
+        React.createElement('p', { key: 'subtitle', className: 'pwsh7_setSubtitle' }, t('settingsSubtitle'))
+      );
+      return React.createElement(
+        React.Fragment,
+        null,
+        React.createElement('style', { key: 'style', dangerouslySetInnerHTML: { __html: CSS } }),
+        React.createElement(
+          'div',
+          { key: 'root', className: 'pwsh7_setRoot' },
+          React.createElement(
+            'div',
+            { key: 'scroll', className: 'pwsh7_setScroll' },
+            React.createElement(
+              'div',
+              { key: 'inner', className: 'pwsh7_setInner' },
+              loadingHead,
+              actionError !== null ? errorBlock('load-error', actionError) : null,
+              actionError === null
+                ? React.createElement('p', { key: 'loading', className: 'pwsh7_empty' }, t('loading'))
+                : null,
+              React.createElement(
+                'div',
+                { key: 'retry-row', className: 'pwsh7_actions' },
+                actionButton('retry', t('retry'), 'retry', {
+                  onClick: function () { setActionError(null); refresh(); }
+                })
+              )
+            )
+          )
+        )
+      );
+    }
+
+    var busy = host.busy || busyAction !== null;
+
+    // Header --------------------------------------------------------------------
+    var header = React.createElement(
+      'div',
+      { key: 'head', className: 'pwsh7_setHead' },
+      React.createElement('h2', { key: 'title', className: 'pwsh7_setTitle' }, t('settingsTitle')),
+      host.pluginVersion !== null
+        ? React.createElement('span', { key: 'plugin-version', className: 'pwsh7_badge' }, 'v' + host.pluginVersion)
+        : null,
+      React.createElement('span', {
+        key: 'status',
+        className: 'pwsh7_badge',
+        'data-tone': host.found ? 'success' : 'error'
+      }, host.found
+        ? (host.version !== null ? interpolate(t('statusReady'), { version: host.version }) : t('statusReadyNoVersion'))
+        : t('notInstalled')),
+      React.createElement('p', { key: 'subtitle', className: 'pwsh7_setSubtitle' }, t('settingsSubtitle'))
+    );
+
+    // Live install/relocate progress --------------------------------------------
+    var workingPhase = busyPhase(host.phase);
+    var determinate = workingPhase && host.percent !== null
+      && host.phase !== 'installing' && host.phase !== 'cancelling' && host.phase !== 'verifying';
+    var phaseLabel = workingPhase ? t(host.phase) : t('busyJob');
+    var progressCard = host.busy || workingPhase
+      ? React.createElement(
+        'section',
+        { key: 'progress', className: 'pwsh7_card', 'aria-live': 'polite' },
+        React.createElement('p', { key: 'phase', className: 'pwsh7_rowValue' }, phaseLabel),
+        React.createElement(
+          'div',
+          {
+            key: 'track',
+            className: 'pwsh7_progress',
+            role: 'progressbar',
+            'aria-label': phaseLabel,
+            'aria-valuemin': 0,
+            'aria-valuemax': 100,
+            'aria-valuenow': determinate ? host.percent : undefined,
+            'data-indeterminate': determinate ? undefined : 'true'
+          },
+          React.createElement('span', {
+            key: 'bar',
+            className: 'pwsh7_bar',
+            style: determinate ? { width: host.percent + '%' } : undefined
+          })
+        ),
+        host.total !== null
+          ? React.createElement(
+            'div',
+            { key: 'meta', className: 'pwsh7_meta' },
+            React.createElement('span', { key: 'text' }, interpolate(t('progress'), {
+              received: formatBytes(host.received),
+              total: formatBytes(host.total),
+              percent: String(host.percent === null ? 0 : host.percent)
+            })),
+            React.createElement('span', { key: 'received' }, formatBytes(host.received))
+          )
+          : null,
+        host.message !== null
+          ? React.createElement('p', { key: 'message', className: 'pwsh7_hint' }, host.message)
+          : null
+      )
+      : null;
+
+    // Installation ---------------------------------------------------------------
+    var installRows = [];
+    if (host.found) {
+      installRows.push(row('version', t('labelPsVersion'), host.version === null ? t('unknown') : host.version));
+      installRows.push(row('path', t('labelPath'), host.path === null ? t('unknown') : host.path, true));
+      installRows.push(row('directory', t('labelDirectory'), host.directory === null ? t('unknown') : host.directory, true));
+      installRows.push(row('scope', t('labelScope'), scopeLabel(host.scope)));
+      installRows.push(row('method', t('labelMethod'), methodLabel(host.method)));
+    } else {
+      installRows.push(React.createElement('p', { key: 'missing', className: 'pwsh7_empty' }, t('installedNone')));
+    }
+    installRows.push(row('config', t('labelConfig'), host.configPath === null ? t('unknown') : host.configPath, true));
+    installRows.push(React.createElement(
+      'div',
+      { key: 'flags', className: 'pwsh7_flags' },
+      [
+        flag('managed', t('labelManaged'), host.managed),
+        flag('removable', t('labelRemovable'), host.removable),
+        flag('user-copy', t('labelUserCopy'), host.userCopy),
+        flag('system-copy', t('labelSystemCopy'), host.systemCopy),
+        flag('path-entry', t('labelPathEntry'), host.pathEntry)
+      ]
+    ));
+
+    var installCard = React.createElement(
+      'section',
+      { key: 'install', className: 'pwsh7_card' },
+      React.createElement('h3', { key: 'title', className: 'pwsh7_cardTitle' }, t('sectionInstall')),
+      React.createElement('div', { key: 'rows', className: 'pwsh7_rows' }, installRows)
+    );
+
+    // Routing --------------------------------------------------------------------
+    var routeCard = React.createElement(
+      'section',
+      { key: 'route', className: 'pwsh7_card' },
+      React.createElement('h3', { key: 'title', className: 'pwsh7_cardTitle' }, t('sectionRoute')),
+      React.createElement(
+        'div',
+        { key: 'seg', className: 'pwsh7_seg', role: 'group', 'aria-label': t('sectionRoute') },
+        routeButton('plugin', t('routePlugin'), host.route === 'plugin', busy),
+        routeButton('system', t('routeSystem'), host.route === 'system', busy)
+      ),
+      React.createElement(
+        'p',
+        { key: 'hint', className: 'pwsh7_actionHint' },
+        host.route === 'system' ? t('routeSystemHint') : t('routePluginHint')
+      ),
+      host.route === 'system'
+        ? React.createElement(
+          'p',
+          { key: 'resolved', className: 'pwsh7_actionHint' },
+          host.systemPath !== null
+            ? interpolate(t('routeSystemPath'), { path: host.systemPath })
+            : t('routeSystemMissing')
+        )
+        : null,
+      busyAction === 'route'
+        ? React.createElement('p', { key: 'saving', className: 'pwsh7_hint' }, t('routeSaving'))
+        : null
+    );
+
+    // Maintenance actions --------------------------------------------------------
+    var actionChildren = [];
+
+    if (!host.found) {
+      actionChildren.push(React.createElement('p', { key: 'install-hint', className: 'pwsh7_actionHint' }, t('actionInstallHint')));
+      actionChildren.push(React.createElement(
+        'div',
+        { key: 'install-row', className: 'pwsh7_actions' },
+        actionButton('install-button', t('actionInstall'), 'install', {
+          disabled: busy,
+          onClick: startInstall
+        })
+      ));
+    }
+
+    if (host.userCopy) {
+      actionChildren.push(React.createElement('p', { key: 'relocate-hint', className: 'pwsh7_actionHint' }, t('actionRelocateHint')));
+      if (confirming === 'relocate') {
+        actionChildren.push(React.createElement(
+          'div',
+          { key: 'relocate-confirm', className: 'pwsh7_confirm' },
+          React.createElement('p', { key: 'text', className: 'pwsh7_confirmText' }, t('relocateConfirm')),
+          React.createElement(
+            'div',
+            { key: 'buttons', className: 'pwsh7_actions' },
+            actionButton('relocate-cancel', t('confirmCancel'), 'relocate-cancel', {
+              onClick: function () { setConfirming(null); }
+            }),
+            actionButton('relocate-do', t('relocateConfirmButton'), 'relocate-confirm', {
+              disabled: busy,
+              onClick: startRelocate
+            })
+          )
+        ));
+      } else {
+        actionChildren.push(React.createElement(
+          'div',
+          { key: 'relocate-row', className: 'pwsh7_actions' },
+          actionButton('relocate-button', t('actionRelocate'), 'relocate', {
+            disabled: busy,
+            onClick: function () { setConfirming('relocate'); }
+          })
+        ));
+      }
+    }
+
+    if (host.removable) {
+      actionChildren.push(React.createElement('p', { key: 'uninstall-hint', className: 'pwsh7_actionHint' }, t('actionUninstallHint')));
+      if (confirming === 'uninstall') {
+        actionChildren.push(React.createElement(
+          'div',
+          { key: 'uninstall-confirm', className: 'pwsh7_confirm' },
+          React.createElement('p', { key: 'text', className: 'pwsh7_confirmText' }, t('uninstallConfirm')),
+          React.createElement(
+            'div',
+            { key: 'buttons', className: 'pwsh7_actions' },
+            actionButton('uninstall-cancel', t('confirmCancel'), 'uninstall-cancel', {
+              onClick: function () { setConfirming(null); }
+            }),
+            actionButton('uninstall-do', t('uninstallConfirmButton'), 'uninstall-confirm', {
+              danger: true,
+              disabled: busy,
+              onClick: startUninstall
+            })
+          )
+        ));
+      } else {
+        actionChildren.push(React.createElement(
+          'div',
+          { key: 'uninstall-row', className: 'pwsh7_actions' },
+          actionButton('uninstall-button', t('actionUninstall'), 'uninstall', {
+            danger: true,
+            disabled: busy,
+            onClick: function () { setConfirming('uninstall'); }
+          })
+        ));
+      }
+    }
+
+    if (host.busy) {
+      actionChildren.push(React.createElement('p', { key: 'busy-job', className: 'pwsh7_hint' }, t('busyJob')));
+    }
+
+    if (notice !== null && typeof notice.text === 'string') {
+      actionChildren.push(React.createElement('p', { key: 'notice', className: 'pwsh7_notice' }, notice.text));
+      if (Array.isArray(notice.details) && notice.details.length > 0) {
+        actionChildren.push(React.createElement(
+          'ul',
+          { key: 'notice-details', className: 'pwsh7_detailList' },
+          notice.details.map(function (entry, index) {
+            return React.createElement('li', { key: 'detail-' + index }, entry);
+          })
+        ));
+      }
+      if (Array.isArray(notice.warnings) && notice.warnings.length > 0) {
+        actionChildren.push(React.createElement(
+          'div',
+          { key: 'notice-warnings', className: 'pwsh7_warnBox' },
+          t('uninstallWarnings'),
+          React.createElement(
+            'ul',
+            { key: 'list', className: 'pwsh7_warnList' },
+            notice.warnings.map(function (entry, index) {
+              return React.createElement('li', { key: 'warning-' + index }, entry);
+            })
+          )
+        ));
+      }
+    }
+
+    if (actionError !== null) actionChildren.push(errorBlock('action-error', actionError));
+
+    // Self-check -----------------------------------------------------------------
+    var checks = [];
+    if (selfcheck !== null && Array.isArray(selfcheck.checks)) {
+      checks = selfcheck.checks.slice().sort(function (left, right) {
+        return selfcheckRank(left && left.id) - selfcheckRank(right && right.id);
+      });
+    }
+    var checkRows = checks.map(function (check, index) {
+      var item = check !== null && typeof check === 'object' ? check : {};
+      var id = typeof item.id === 'string' ? item.id : '';
+      var status = item.status === 'ok' || item.status === 'warn' || item.status === 'fail' ? item.status : 'fail';
+      var detail = typeof item.detail === 'string' ? item.detail : '';
+      var suffix = status === 'ok' ? '' : ' · ' + t(status === 'warn' ? 'statusWarn' : 'statusFail');
+      return React.createElement(
+        'li',
+        { key: 'check-' + (id || index), className: 'pwsh7_check', 'data-status': status },
+        React.createElement('span', { key: 'dot', className: 'pwsh7_checkDot', 'aria-hidden': 'true' }),
+        React.createElement(
+          'span',
+          { key: 'body', className: 'pwsh7_checkBody' },
+          React.createElement('span', {
+            key: 'title',
+            className: 'pwsh7_checkTitle',
+            'data-status': status
+          }, t('selfcheck.' + id) + suffix),
+          detail !== '' ? React.createElement('span', { key: 'detail', className: 'pwsh7_checkDetail' }, detail) : null
+        )
+      );
+    });
+
+    var summaryText = null;
+    var checkedText = null;
+    if (selfcheck !== null) {
+      var summary = selfcheck.summary !== null && typeof selfcheck.summary === 'object' ? selfcheck.summary : null;
+      if (summary !== null) {
+        summaryText = interpolate(t('selfcheckSummary'), {
+          ok: Number(summary.ok) || 0,
+          warn: Number(summary.warn) || 0,
+          fail: Number(summary.fail) || 0
+        });
+      }
+      if (typeof selfcheck.checkedAt === 'string' && selfcheck.checkedAt.length > 0) {
+        checkedText = interpolate(t('selfcheckAt'), { time: formatCheckedAt(selfcheck.checkedAt) });
+      }
+    }
+
+    actionChildren.push(React.createElement(
+      'div',
+      { key: 'selfcheck', className: 'pwsh7_rows' },
+      React.createElement(
+        'div',
+        { key: 'head', className: 'pwsh7_selfHead' },
+        actionButton('selfcheck-button', busyAction === 'selfcheck' ? t('selfcheckRunning') : t('selfcheckRun'), 'selfcheck', {
+          disabled: busy,
+          onClick: runSelfcheck
+        }),
+        summaryText !== null
+          ? React.createElement('p', { key: 'summary', className: 'pwsh7_summary' }, summaryText)
+          : null,
+        checkedText !== null
+          ? React.createElement('p', { key: 'at', className: 'pwsh7_summary' }, checkedText)
+          : null
+      ),
+      checkRows.length > 0
+        ? React.createElement('ul', { key: 'checks', className: 'pwsh7_checks' }, checkRows)
+        : React.createElement('p', { key: 'empty', className: 'pwsh7_empty' }, t('selfcheckEmpty'))
+    ));
+
+    var actionsCard = React.createElement(
+      'section',
+      { key: 'actions', className: 'pwsh7_card' },
+      React.createElement('h3', { key: 'title', className: 'pwsh7_cardTitle' }, t('sectionActions')),
+      actionChildren
+    );
+
+    return React.createElement(
+      React.Fragment,
+      null,
+      React.createElement('style', { key: 'style', dangerouslySetInnerHTML: { __html: CSS } }),
+      React.createElement(
+        'div',
+        { key: 'root', className: 'pwsh7_setRoot' },
+        React.createElement(
+          'div',
+          { key: 'scroll', className: 'pwsh7_setScroll' },
+          React.createElement(
+            'div',
+            { key: 'inner', className: 'pwsh7_setInner' },
+            header,
+            progressCard,
+            installCard,
+            routeCard,
+            actionsCard
+          )
+        )
+      )
+    );
+  }
+
   //#endregion
 
   if (typeof window !== 'undefined' && window.__ModuleLoader__ && typeof window.__ModuleLoader__.load === 'function') {
@@ -746,6 +1864,19 @@
               }, PLUGIN_ID + ': zh dictionary');
             }
 
+            // The settings page's label and its `t` prop come from the SAME bound translator, so a
+            // language switch re-labels the nav row and the mounted page together. A host without
+            // `locale.bind` keeps working through the plugin's own fallback translator.
+            var translate = fallbackTranslate;
+            try {
+              if (ctx.locale !== undefined && typeof ctx.locale.bind === 'function') {
+                var bound = ctx.locale.bind(LOCALE_NS);
+                if (typeof bound === 'function') translate = bound;
+              }
+            } catch (error) {
+              // Keep the fallback translator.
+            }
+
             ctx.slots.inject('shell.overlay', function () {
               return ctx.slots.register({
                 name: 'shell.overlay',
@@ -753,6 +1884,17 @@
                 order: 90,
                 locale: LOCALE_NS
               }, Pwsh7SetupDialog);
+            });
+
+            ctx.slots.inject('settings.section', function () {
+              return ctx.slots.register({
+                name: 'settings.section',
+                id: 'pwsh7',
+                order: 80,
+                label: function () { return translate('settingsNav'); },
+                locale: LOCALE_NS,
+                inject: function () { return { t: translate }; }
+              }, Pwsh7Settings);
             });
           }
         };

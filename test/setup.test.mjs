@@ -6,6 +6,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 
@@ -304,13 +305,27 @@ function makeService(t, overrides = {}) {
   return service;
 }
 
-test('route table names the four exact setup routes', () => {
-  const rows = setupRouteRows({ state() {}, events() {}, install() {}, cancel() {} });
+test('route table names the eight exact setup/maintenance routes', () => {
+  const noop = () => {};
+  const rows = setupRouteRows({
+    state: noop,
+    events: noop,
+    install: noop,
+    cancel: noop,
+    route: noop,
+    uninstall: noop,
+    relocate: noop,
+    selfcheck: noop,
+  });
   assert.deepEqual(rows.map((row) => row.path), [
     SETUP_ROUTES.state,
     SETUP_ROUTES.events,
     SETUP_ROUTES.install,
     SETUP_ROUTES.cancel,
+    SETUP_ROUTES.route,
+    SETUP_ROUTES.uninstall,
+    SETUP_ROUTES.relocate,
+    SETUP_ROUTES.selfcheck,
   ]);
   assert.ok(rows.every((row) => row.kind === 'exact'));
 });
@@ -369,6 +384,10 @@ test('installRouterFeatures wires the prompt and routes from the executor row', 
     SETUP_ROUTES.events,
     SETUP_ROUTES.install,
     SETUP_ROUTES.cancel,
+    SETUP_ROUTES.route,
+    SETUP_ROUTES.uninstall,
+    SETUP_ROUTES.relocate,
+    SETUP_ROUTES.selfcheck,
   ]);
 });
 
@@ -432,6 +451,15 @@ test('POST /pwsh7/install rejects an unsupported method', async (t) => {
   const res = makeResponse();
   await handlers.install(req, res);
   assert.equal(res.statusCode, 400);
+});
+
+test('the shell_router tool never starts an installation', () => {
+  // Installation is user-initiated in the Web UI only; the tool must only return guidance.
+  const source = fs.readFileSync(new URL('../lib/router-features.mjs', import.meta.url), 'utf8');
+  assert.match(source, /INSTALL_GUIDANCE/);
+  assert.match(source, /action === 'install' \|\| action === 'relocate'/);
+  assert.doesNotMatch(source, /installer\.start\s*\(/);
+  assert.doesNotMatch(source, /ensurePwsh/);
 });
 
 test('GET /pwsh7/events opens an SSE stream with the current snapshot', (t) => {

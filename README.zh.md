@@ -8,8 +8,11 @@ Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具
 
 - 执行器继承 DSH 自带 `dsh-pwsh-sandbox` 的全部行为：沙箱模式、`sandbox_permissions` 升权、
   拒绝/runner 失败标记、后台任务、输出上限与 exit marker；本插件只替换可执行文件解析。
-- 找不到 PowerShell 7 时，提供模型可调用的 **`shell_router`** 工具做检测、诊断和
-  **用户级或系统级自动下载安装并写入对应 PATH**（默认用户级，无需管理员权限）。
+- 找不到 PowerShell 7 时，提供模型可调用的 **`shell_router`** 工具做检测、诊断、自检、路由切换与卸载插件自装副本。
+- **安装永远不是自动的，也不会由模型发起。** 缺少 PowerShell 7 时 Web GUI 会弹出安装弹窗；
+  只有用户在弹窗或 **设置 → PowerShell 7** 中点击安装，或用户自行安装 PowerShell 7 时才会安装。
+- Web GUI 的设置菜单里新增 **PowerShell 7 页面**：显示可执行文件、版本、安装目录、安装范围与方式，
+  提供**插件自检**、**切回系统默认路由**、**卸载插件自装的用户级安装**，以及**把用户级安装迁移到系统级**。
 - Web GUI 里另有**安装弹窗**：开机检测到缺失时、以及之后**每次 `pwsh` 运行因缺少 PowerShell 7
   失败时**都会弹出，提供下载按钮与实时进度（已下载字节、百分比、阶段）。关闭弹窗不会中断安装，
   下一次失败运行会再次弹出。
@@ -26,9 +29,10 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 1. **接管 `pwsh-sandbox` 槽位**：DSH 的 patch 语义里 `name` 是对目标行的断言而不是就地替换，
    所以先用 id patch 停用官方行，再插入 `RouterPwshExecutor extends SandboxPwshExecutor` 的执行器行
    （`id: pwsh7-executor`）。显式 `config.pwshPath` 优先；否则使用插件检测到的 PowerShell 7。
-2. **插入裸包名 `dsh-plugin-pwsh7` 行**：注册 `shell_router` 工具（`status` / `diagnose` / `install`）、
-   系统提示小节与 Web 安装弹窗路由。这行的裸包名也是 DSH 客户端模块扫描器发现 `client.js` 的依据；
-   executor 行的 `./pwsh-executor` 子路径不会被当作客户端 bundle 来源。
+2. **插入裸包名 `dsh-plugin-pwsh7` 行**：注册 `shell_router` 工具（`status` / `diagnose` / `selfcheck` /
+   `route` / `uninstall`）、系统提示小节、安装弹窗/设置页路由与浏览器 bundle。这行的裸包名也是 DSH
+   客户端模块扫描器发现 `client.js` 的依据；executor 行的 `./pwsh-executor` 子路径不会被当作客户端
+   bundle 来源。
 
 ## 环境要求
 
@@ -42,7 +46,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 通过 DSH 插件管理器从 npm 安装：
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.2
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.0
 ```
 
 或从本地目录安装（目录安装会链接源码，便于开发）：
@@ -61,7 +65,28 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 |---|---|
 | `status`（默认） | 报告解析到的 PowerShell 7 路径与版本、配置文件、当前沙箱策略、`@deepseek-ai/*` 加载状态。 |
 | `diagnose` | 在**当前沙箱策略**下真实运行 PowerShell 7 命令（版本 + 工作区写入），输出退出码、stdout/stderr、拒绝/runner 失败判定与具体修复建议。 |
-| `install` | 确保 PowerShell 7 可用。`method: "auto"`（默认）优先所选范围的便携 zip，失败回退 winget；`portable`/`winget` 强制单一方式。所选范围已有可用安装时修复 PATH 并刷新配置，不会重复下载。 |
+| `install`、`relocate` | **工具不会执行安装。** 只返回引导：安装只能由用户在安装弹窗、设置 → PowerShell 7 或手动安装中发起。 |
+| `selfcheck` | 运行与设置页相同的只读自检，返回 `ok` / `warn` / `fail`。 |
+| `route` | 持久化 `route: "plugin"` 或 `route: "system"`，并返回新路由。 |
+| `uninstall` | 删除插件自装的用户级便携安装（文件、临时目录、托管 PATH 条目），保留路由偏好。 |
+
+### 设置页（Web）
+
+浏览器半边还会在 Web GUI 的设置菜单注册一个 **PowerShell 7** 页面（`settings.section`）：
+
+- **状态**：当前 PowerShell 7 版本与可执行文件、安装目录、配置文件路径、安装范围与方式、插件版本，
+  以及该安装是否由插件管理、能否卸载。
+- **路由**：一键在“插件管理的 PowerShell 7”和“系统默认”之间切换。系统默认只解析系统级安装
+  （`Program Files`、用户 `Programs` 目录、Store 别名、插件目录以外的 `PATH` 条目），
+  找不到系统 PowerShell 7 时按 DSH 原生行为回退到 Windows PowerShell 5.1。选择写入
+  `config.json` 的 `route`，下一条 `pwsh` 命令生效。
+- **自检**：检查可执行文件解析、PowerShell 主版本、路由、配置有效性、安装/范围一致性、持久 PATH
+  条目、`@deepseek-ai/*` 加载、沙箱策略、是否有安装任务在运行，并以 `ok` / `warn` / `fail` 显示详情。
+- **安装/修复**：启动与安装弹窗相同的共享安装任务（用户级），显示实时进度。
+- **迁移到系统**：在 `Program Files` 安装 PowerShell 7 并写入系统 PATH（需要管理员），随后删除用户级
+  副本并把路由指向系统可执行文件；未提权时给出明确提示，不会卡在 UAC。
+- **卸载**：仅对插件自装的用户级便携安装可用；删除已安装版本与临时目录、移除托管的 `PATH` 条目，
+  不会触碰系统或其他包管理器管理的安装。
 
 ### 安装弹窗（Web）
 
@@ -69,17 +94,17 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 - **何时弹出**：首次加载时检测不到 `pwsh.exe`；以及之后**每次 `pwsh` 工具因缺少 PowerShell 7
   失败**时（`missingSeq`）。点“稍后”只关闭到下一次失败运行；只要仍然缺失，刷新页面也会再次弹出。
-- **做什么**：点“下载并安装”会启动与 `shell_router install` **同一个**安装任务，可选择用户或系统范围。弹窗依次显示
+- **做什么**：点“下载并安装”会启动共享的、由用户发起的安装任务，可选择用户或系统范围。弹窗依次显示
   `下载 → 解压 → 验证`，以及已下载字节、总大小和百分比；“取消下载”可以中止。
-- **为什么只有一个任务**：弹窗和工具共用一个协调器，所以模型触发的安装能在弹窗里看到实时进度，
-  弹窗触发的安装也会被工具等待。并发安装会在 `%LOCALAPPDATA%\dsh\pwsh7\tmp` 的同一个压缩包上互相踩踏。
+- **为什么只有一个任务**：弹窗和设置页共用一个协调器，所以无论用户从哪个界面开始安装，进度都一致，
+  也不会在 `%LOCALAPPDATA%\dsh\pwsh7\tmp` 的同一个压缩包上互相踩踏。模型的 `shell_router` 工具不会启动安装。
 - **传输**：`GET /pwsh7/state`（快照）、`GET /pwsh7/events`（SSE，进度约 7 帧/秒）、
   `POST /pwsh7/install`、`POST /pwsh7/cancel`。SSE 负责平滑进度，同时始终保留每 3 秒一次的
   `/pwsh7/state` 轮询，作为事件流被缓冲时的兜底。这些路由仅限同源，POST 只接受 `application/json`。
 - **失败**：弹窗保留安装器的原始错误，提供“重试”和官方 PowerShell releases 链接；安装失败不影响
   已有的 `pwsh` 路由，直到某次安装成功。
-- **范围**：弹窗属于 Web GUI。纯 CLI/无头组合仍然可以使用 `shell_router` 工具和同一个安装器，只是
-  没有窗口。
+- **范围**：弹窗属于 Web GUI。纯 CLI/无头组合仍可在 Web 组合存在时使用 `shell_router` 的
+  status/diagnose/selfcheck 与设置页路由，但没有浏览器时安装需要手动完成。
 
 ### 显式指定路径
 
@@ -96,6 +121,17 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 官方 `pwsh-sandbox` 行本身仍支持 `pwshPath` 配置字段；显式配置优先于自动检测。
 
+### 路由模式
+
+`config.json` 的 `route` 决定 `pwsh` 工具运行哪个可执行文件：
+
+| 路由 | 解析方式 |
+|---|---|
+| `plugin`（默认） | `DSH_PWSH_PATH` → `config.pwshPath` → 常见安装位置（含插件托管的便携安装）→ `PATH`；缺失时抛出安装提示。 |
+| `system` | 只解析系统级位置：`Program Files`、`Program Files (x86)`、`%LOCALAPPDATA%\Programs`、Store 别名、`%LOCALAPPDATA%\dsh\pwsh7` 以外的 `PATH` 条目，最后按原生行为回退到 Windows PowerShell 5.1；忽略 `DSH_PWSH_PATH` 与 `config.pwshPath`。 |
+
+设置页可在运行时切换路由（`POST /pwsh7/route`），无需重启。
+
 ### 配置文件
 
 `%LOCALAPPDATA%\dsh\pwsh7\config.json`：
@@ -103,12 +139,14 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 ```json
 {
   "version": 1,
+  "route": "plugin",
   "pwshPath": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
   "installed": {
     "pwsh": {
       "path": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
       "version": "7.6.7",
       "method": "existing",
+      "scope": "user",
       "at": "2026-10-17T00:00:00.000Z"
     }
   },
@@ -116,9 +154,12 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 }
 ```
 
-## 自动安装
+## 安装（用户发起）
 
-可在 Web 弹窗选择范围，或为 `shell_router install` 传入 `scope: "user"`（默认）或 `scope: "system"`。
+安装只能由用户发起：Web 安装弹窗、设置 → PowerShell 7，或在 DSH 之外自行安装 PowerShell 7。
+模型工具不会启动安装。
+
+可在 Web 弹窗选择 `scope: "user"`（默认）或 `scope: "system"`。
 
 | 范围 | 安装位置 | 持久 PATH |
 |---|---|---|
@@ -127,10 +168,11 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 系统安装需要先以管理员身份启动 DSH；权限不足会在下载前报错。用户安装无需提权。两种方式都会保留已有 PATH 及注册表值类型、避免重复添加、刷新宿主进程 PATH，并广播 Windows 环境变量变更。已打开的终端可能需要重新启动。PATH 写入失败会明确报错，不会显示安装成功。
 
-```text
-shell_router action=install scope=user
-shell_router action=install scope=system
-```
+设置页可以把已有用户级安装一步迁移到系统级（`POST /pwsh7/relocate`）：安装/复用 Program Files
+副本、写入系统 PATH、删除用户级副本，并把配置指向系统可执行文件。
+
+没有 Web GUI 时，请自行安装 PowerShell 7（官方 MSI/Store/release zip），并把 `DSH_PWSH_PATH`
+或 `config.json` 指向其 `pwsh.exe`。
 
 便携包来源：
 
@@ -170,17 +212,21 @@ shell_router action=install scope=system
 
 | 路径 | 作用 |
 |---|---|
-| `index.js` | 裸包名行：安装 `shell_router`、系统提示小节、安装弹窗路由与热重载刷新 |
-| `client.js` | 浏览器半边：`shell.overlay` 安装弹窗、SSE + 轮询、下载/取消、中英文案 |
+| `index.js` | 裸包名行：安装 `shell_router`、系统提示小节、安装/设置路由与热重载刷新 |
+| `client.js` | 浏览器半边：`shell.overlay` 安装弹窗 + `settings.section` 的 PowerShell 7 设置页、SSE + 轮询、安装/路由/卸载/迁移/自检操作、中英文案 |
 | `lib/shipped.mjs` | 从运行中的 DSH 安装（Electron `app.asar`）加载 `@deepseek-ai/*` 包 |
 | `lib/paths.mjs` | PowerShell 7 路径探测、版本探测、`config.json` 读写 |
+| `lib/route.mjs` | 路由模式持久化、系统默认可执行文件解析、安装信息描述 |
 | `lib/install.mjs` | 用户/系统级便携安装（官方 zip）+ 同范围 winget 回退；进度与阶段回调 |
+| `lib/install-scope.mjs` | 注册表 PATH 写入/移除（保留值类型）、提权探测、Program Files 范围 |
 | `lib/state.mjs` | 进程内解析缓存（executor 与工具共用）；缺失运行信号 |
+| `lib/maintenance.mjs` | 删除插件自装的用户级安装（文件、临时目录、托管的 PATH 条目） |
+| `lib/selfcheck.mjs` | 只读自检：可执行文件、版本、路由、配置、安装、PATH、内置包、沙箱、任务、路由表 |
 | `lib/router-features.mjs` | 从裸包名行安装 `shell_router`、系统提示小节、安装协调器与 Web 路由 |
-| `lib/setup-service.mjs` | 安装协调器：同一时刻一个任务、进度快照、取消、`missingSeq` |
-| `lib/setup-routes.mjs` | `/pwsh7/state`、`/pwsh7/events`（SSE）、`/pwsh7/install`、`/pwsh7/cancel` |
+| `lib/setup-service.mjs` | 单一任务协调器：安装/迁移/卸载/路由、进度快照、取消、`missingSeq` |
+| `lib/setup-routes.mjs` | 八个 `/pwsh7/*` 路由（`state`、`events`、`install`、`cancel`、`route`、`uninstall`、`relocate`、`selfcheck`） |
 | `lib/status.mjs` | `status` / `diagnose` 实现 |
-| `lib/executors/pwsh.mjs` | PowerShell 7 执行器（继承官方 `SandboxPwshExecutor`） |
+| `lib/executors/pwsh.mjs` | PowerShell 7 执行器（继承官方 `SandboxPwshExecutor`），按路由分支解析 |
 | `cordis.patch.yml` | bundle patch：停用官方 `pwsh-sandbox`，插入执行器行与裸包名行（仅 Windows） |
 | `locale/en.json`, `locale/zh.json`, `icon.svg` | 插件管理页显示元数据 |
 
@@ -190,11 +236,12 @@ shell_router action=install scope=system
 
 ```powershell
 # 纯 Node 单元测试（不需要 DSH 运行）
-node --test test/paths.test.mjs test/install.test.mjs test/setup.test.mjs test/client.test.mjs
+node --test test/*.test.mjs
 ```
 
-- 72 tests：71 pass，0 fail，1 skipped（网络用例默认跳过）。
-- 设置 `DSH_PWSH7_NETWORK_TESTS=1` 会启用真实 GitHub release / HEAD 校验：30/30 pass。
+- 141 个测试：137 通过，0 失败，默认跳过 4 个（2 个依赖真实安装路径的环境用例、1 个网络用例、
+  1 个仅在 GitHub Actions 运行的注册表用例）。
+- 设置 `DSH_PWSH7_NETWORK_TESTS=1` 会启用真实 GitHub release / HEAD 校验。
 - 环境变量覆盖前缀为 `DSH_PWSH7_*`（`APP_ROOT`、`TAR`、`NETWORK_TESTS`）。
 
 ## 发布（维护者）
@@ -231,9 +278,10 @@ npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
 
 `0.1.0` 是第一个公开发布版本。`0.1.1` 是第一个通过 npm **Trusted Publishing**（OIDC）由
 GitHub Actions 发布的版本，并修正了 npm 页面 README 的跨文件链接。`0.2.0` 增加 Web 安装弹窗，
-并把安装收敛到单一协调器。更早的内部迭代（0.2.x/0.3.x）曾包含 MSYS2 bash 路由并使用过不同的包名；
-由于 MSYS2/Cygwin 无法在 DSH Windows ACL 沙箱中启动，该部分已被移除。历史实测证据保留在构建工作区的
-`sandbox-recon/FINDINGS.md`，不在本包内。
+并把安装收敛到单一协调器；`0.2.2` 增加用户/系统安装范围与持久 PATH；`0.3.0` 增加设置页
+（自检、路由切换、用户级卸载、迁移到系统范围）。更早的内部迭代（0.2.x/0.3.x）曾包含 MSYS2 bash
+路由并使用过不同的包名；由于 MSYS2/Cygwin 无法在 DSH Windows ACL 沙箱中启动，该部分已被移除。
+历史实测证据保留在构建工作区的 `sandbox-recon/FINDINGS.md`，不在本包内。
 
 ## 卸载
 
@@ -242,7 +290,9 @@ plugin_manager action=remove_bundle target=dsh-plugin-pwsh7
 ```
 
 卸载后原生 Windows 预设恢复，`pwsh` 回到 DSH 原有解析。用户级目录
-`%LOCALAPPDATA%\dsh\pwsh7\` 不会自动删除，可按需手动清理。
+`%LOCALAPPDATA%\dsh\pwsh7\` 不会被插件管理器自动删除；如果还想移除插件自装的 PowerShell 7
+及其托管的 PATH 条目，请先使用 **设置 → PowerShell 7 → 卸载**（或
+`shell_router action="uninstall"`）。
 
 ## License
 

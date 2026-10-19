@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Windows PowerShell 7 Router",
-    "description": "Routes DSH's pwsh tool to PowerShell 7 on Windows, with per-user detection, a Web setup dialog with live download progress, and a sandbox-aware executor."
+    "description": "Routes DSH's pwsh tool to PowerShell 7 on Windows, with per-user detection, a Web setup dialog with live download progress, a Settings page with install status, self-check, route switching, per-user uninstall and system migration, and a sandbox-aware executor."
   }
 }

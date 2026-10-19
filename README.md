@@ -10,7 +10,15 @@ Windows DeepSeek Harness (DSH) bundle that routes the model-facing **`pwsh` tool
   `sandbox_permissions` escalation, denial/runner-failure facts, background jobs, output caps, and
   exit markers. It only replaces executable resolution.
 - When PowerShell 7 is missing, a model-facing **`shell_router`** tool reports status, diagnoses
-  sandbox problems, and installs PowerShell 7 for the current user or the system, with matching PATH updates.
+  sandbox problems, runs a self-check, switches routing, and removes the plugin-managed copy.
+- **Installation is never automatic and is never started by the model.** When PowerShell 7 is
+  missing, the Web GUI opens a setup dialog; installation only happens when the user clicks the
+  install action there or in **Settings → PowerShell 7**, or when the user installs PowerShell 7
+  manually.
+- A **PowerShell 7 settings page** in the Web GUI shows the resolved executable, version, install
+  directory, scope and method, optionally **self-checks** the whole routing stack, **switches
+  routing** back to the system default, **uninstalls** a plugin-managed per-user install, and
+  **migrates** a per-user install to the system scope.
 - In the Web GUI, a **setup dialog** opens whenever PowerShell 7 is missing — on load and again on
   every `pwsh` run — with a download button and live progress (bytes, percent, phase). Closing it
   never cancels an install, and the next failed run re-opens it.
@@ -30,7 +38,8 @@ overrides only its `pwshPath` resolution:
    SandboxPwshExecutor` row (`id: pwsh7-executor`) is inserted. An explicit `config.pwshPath` still
    wins; otherwise the plugin-resolved PowerShell 7 is used.
 2. **Insert the bare `dsh-plugin-pwsh7` row**, which registers the `shell_router` tool
-   (`status` / `diagnose` / `install`), a small system-prompt section, and the Web setup routes.
+   (`status` / `diagnose` / `selfcheck` / `route` / `uninstall`), a small system-prompt section, the
+   setup dialog/settings routes, and the browser bundle.
    That row's name is also what DSH's client-module scanner uses to discover `client.js`; the
    executor row's `./pwsh-executor` subpath is not a client-bundle source.
 
@@ -46,7 +55,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.2.2
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.0
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -67,7 +76,34 @@ The model-facing `shell_router` tool:
 |---|---|
 | `status` (default) | Resolved PowerShell 7 path and version, config file, current sandbox policy, shipped-package resolution. |
 | `diagnose` | Runs real PowerShell 7 commands under the **current sandbox policy** (version + workspace write) and reports exit codes, stdout/stderr, denial/runner-failure classification, and concrete hints. |
-| `install` | Ensures PowerShell 7 exists. `method: "auto"` (default) prefers the portable zip for the selected scope, then falls back to winget; `portable`/`winget` force one strategy. Existing working installations within the selected scope are reused and their PATH is repaired. |
+| `install`, `relocate` | **Not performed by the tool.** They return guidance: installation is user-initiated only, from the setup dialog, Settings → PowerShell 7, or a manual install. |
+| `selfcheck` | Runs the same read-only self-check as the settings page and returns `ok` / `warn` / `fail` lines. |
+| `route` | Persists `route: "plugin"` or `route: "system"` and reports the new route. |
+| `uninstall` | Removes the plugin-managed per-user portable install (files, temporary directory, managed PATH entry) while keeping the routing preference. |
+
+### Settings page (Web)
+
+The browser half also registers a **PowerShell 7** page in the Web GUI's settings menu
+(`settings.section`). It is read-only until an action is chosen:
+
+- **Status:** resolved PowerShell 7 version and executable, install directory, config path, install
+  scope and method, plugin version, and whether the install is plugin-managed/removable.
+- **Routing:** one click toggles between *Plugin-managed PowerShell 7* and *System default*. The
+  system-default route resolves only system installations — `Program Files`, the per-user Programs
+  directory, the Store alias, and `PATH` entries outside the plugin root — and falls back to stock
+  DSH behavior (Windows PowerShell 5.1) when no system PowerShell 7 exists. The choice is stored as
+  `route` in `config.json` and takes effect for the next `pwsh` command.
+- **Self-check:** reports executable resolution, PowerShell major version, route, config validity,
+  install/scope consistency, persisted `PATH` entry, shipped-package resolution, sandbox policy, and
+  a running install, each as `ok` / `warn` / `fail` with details.
+- **Install/repair:** starts the same shared install job as the setup dialog (user scope), with live
+  progress.
+- **Migrate to system:** installs PowerShell 7 under Program Files with a system `PATH` entry
+  (administrator required), then removes the per-user copy and points routing at the system
+  executable. An unelevated DSH host is told exactly what to do instead of hanging on UAC.
+- **Uninstall:** available only for the plugin-managed per-user portable install. It removes the
+  installed versions and temporary directory, drops the managed `PATH` entry, and leaves
+  system/package-manager installations untouched.
 
 ### Setup dialog (Web)
 
@@ -77,20 +113,21 @@ and in the desktop shell without a second window:
 - **When it opens:** on first load when `pwsh.exe` cannot be found, and again every time a `pwsh`
   tool run fails for that reason (`missingSeq`). "Not now" hides it until the next failed run; a
   page reload opens it again while PowerShell 7 is still missing.
-- **What it does:** `Download and install` starts the same scoped installation job as `shell_router install`.
+- **What it does:** `Download and install` starts the shared, user-initiated installation job.
   The dialog shows `downloading → extracting → verifying`, transferred bytes, total, and percent.
   `Cancel download` aborts it.
-- **Why one job:** the dialog and the tool share one coordinator, so a model-triggered install is
-  visible in the dialog (with progress) and a dialog-triggered install is awaited by the tool.
-  Concurrent installs would race on the same archive under `%LOCALAPPDATA%\dsh\pwsh7\tmp`.
+- **Why one job:** the dialog and the settings page share one coordinator, so whichever surface the
+  user starts an install from shows the same progress, and two installs cannot race on the same
+  archive under `%LOCALAPPDATA%\dsh\pwsh7\tmp`. The model's `shell_router` tool never starts one.
 - **Transport:** `GET /pwsh7/state` (snapshot), `GET /pwsh7/events` (SSE, progress coalesced to
   ~7 frames/s), `POST /pwsh7/install`, `POST /pwsh7/cancel`. SSE drives smooth progress; a 3 s
   `/pwsh7/state` poll stays active as the fallback for carriers that buffer event streams.
   These routes are same-origin and accept POST bodies only as `application/json`.
 - **Failure:** the dialog keeps the installer's message, offers `Retry`, and links to the official
   PowerShell releases page. A failed install does not affect `pwsh` routing until one succeeds.
-- **Scope:** the dialog belongs to the Web GUI. A headless/CLI composition still gets the
-  `shell_router` tool and the same installer, just without a window.
+- **Scope:** the dialog belongs to the Web GUI. A headless/CLI composition still gets `shell_router`
+  status/diagnose/selfcheck and the settings routes when the Web app is composed, but installation
+  without a browser is a manual step.
 
 ### Explicit paths
 
@@ -108,6 +145,17 @@ Resolution order for the pwsh executable:
 The stock `pwsh-sandbox` row still accepts its official `pwshPath` config field; an explicit config
 value takes precedence over automatic detection.
 
+### Routing modes
+
+`route` in `config.json` selects which executable the `pwsh` tool runs:
+
+| Route | Resolution |
+|---|---|
+| `plugin` (default) | `DSH_PWSH_PATH` → `config.pwshPath` → well-known locations including the plugin-managed portable install → `PATH`; missing PowerShell 7 raises the setup hint. |
+| `system` | System-installed locations only: `Program Files`, `Program Files (x86)`, `%LOCALAPPDATA%\Programs`, the Store alias, `PATH` entries outside `%LOCALAPPDATA%\dsh\pwsh7`, then Windows PowerShell 5.1 as the stock last resort. `DSH_PWSH_PATH` and `config.pwshPath` are ignored. |
+
+The settings page switches the route at runtime (`POST /pwsh7/route`); no restart is needed.
+
 ### Config file
 
 `%LOCALAPPDATA%\dsh\pwsh7\config.json`:
@@ -115,12 +163,14 @@ value takes precedence over automatic detection.
 ```json
 {
   "version": 1,
+  "route": "plugin",
   "pwshPath": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
   "installed": {
     "pwsh": {
       "path": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
       "version": "7.6.7",
       "method": "existing",
+      "scope": "user",
       "at": "2026-10-17T00:00:00.000Z"
     }
   },
@@ -128,9 +178,12 @@ value takes precedence over automatic detection.
 }
 ```
 
-## Automatic installation
+## Installation (user-initiated)
 
-Choose `scope: "user"` (default) or `scope: "system"` in `shell_router install`, or select the scope in the Web dialog.
+Installation is only started by the user, from the Web setup dialog or Settings → PowerShell 7,
+or by installing PowerShell 7 outside DSH. The model-facing tool never starts an install.
+
+Choose `scope: "user"` (default) or `scope: "system"` in the Web dialog.
 
 | Scope | Destination | Persistent PATH |
 |---|---|---|
@@ -139,10 +192,12 @@ Choose `scope: "user"` (default) or `scope: "system"` in `shell_router install`,
 
 System installation requires starting the DSH host as administrator; an unelevated host fails before downloading. User installation needs no elevation. Both preserve existing PATH entries and registry value types, avoid duplicate entries, refresh the host process PATH, and notify Windows. Already running terminals may need reopening. PATH write failures are reported as installation failures.
 
-```text
-shell_router action=install scope=user
-shell_router action=install scope=system
-```
+The settings page can migrate an existing per-user install to the system scope in one step
+(`POST /pwsh7/relocate`): it installs/reuses the Program Files copy, writes the system PATH, removes
+the per-user copy, and points the config at the system executable.
+
+To install without the Web GUI, install PowerShell 7 yourself (official MSI/Store/release zip) and
+set `DSH_PWSH_PATH` or `config.json` to its `pwsh.exe`.
 
 Portable download source:
 
@@ -186,17 +241,21 @@ Portable download source:
 
 | Path | Role |
 |---|---|
-| `index.js` | Bare package row: installs `shell_router`, the system-prompt section, setup routes, and the reload hook |
-| `client.js` | Browser half: `shell.overlay` setup dialog, SSE + polling, download/cancel actions, en/zh copy |
+| `index.js` | Bare package row: installs `shell_router`, the system-prompt section, setup/settings routes, and the reload hook |
+| `client.js` | Browser half: `shell.overlay` setup dialog plus the `settings.section` PowerShell 7 page, SSE + polling, install/route/uninstall/relocate/self-check actions, en/zh copy |
 | `lib/shipped.mjs` | Loads the shipped `@deepseek-ai/*` packages from the running DSH installation (`app.asar`) |
 | `lib/paths.mjs` | PowerShell 7 detection, version probing, `config.json` IO |
-| `lib/install.mjs` | Per-user portable install (official zip) + winget fallback; progress and phase callbacks |
+| `lib/route.mjs` | Routing mode persistence, system-default executable resolution, install description |
+| `lib/install.mjs` | User/system-scope portable install (official zip) + winget fallback; progress and phase callbacks |
+| `lib/install-scope.mjs` | Registry PATH persistence/removal (preserving value kind), elevation probes, Program Files scope |
 | `lib/state.mjs` | Process-wide resolution cache shared by the executor and the tool; missing-run signal |
+| `lib/maintenance.mjs` | Removes a plugin-managed per-user portable install (files, temp dir, managed PATH entries) |
+| `lib/selfcheck.mjs` | Read-only self-check: executable, version, route, config, install, PATH, shipped packages, sandbox, job, routes |
 | `lib/router-features.mjs` | Installs `shell_router`, the system-prompt section, the setup coordinator, and routes from the bare package row |
-| `lib/setup-service.mjs` | Single install coordinator: one job, progress snapshots, cancel, `missingSeq` |
-| `lib/setup-routes.mjs` | `/pwsh7/state`, `/pwsh7/events` (SSE), `/pwsh7/install`, `/pwsh7/cancel` |
+| `lib/setup-service.mjs` | Single job coordinator: install/relocate/uninstall/route, progress snapshots, cancel, `missingSeq` |
+| `lib/setup-routes.mjs` | The eight `/pwsh7/*` routes (`state`, `events`, `install`, `cancel`, `route`, `uninstall`, `relocate`, `selfcheck`) |
 | `lib/status.mjs` | `status` / `diagnose` implementations |
-| `lib/executors/pwsh.mjs` | PowerShell 7 executor (extends the official `SandboxPwshExecutor`) |
+| `lib/executors/pwsh.mjs` | PowerShell 7 executor (extends the official `SandboxPwshExecutor`), branches on the route |
 | `cordis.patch.yml` | Bundle patch: disables the stock `pwsh-sandbox`, inserts the executor and bare package rows (Windows only) |
 | `locale/en.json`, `locale/zh.json`, `icon.svg` | Plugin-manager display metadata |
 
@@ -206,11 +265,12 @@ Portable download source:
 
 ```powershell
 # Plain Node tests (no running DSH required)
-node --test test/paths.test.mjs test/install.test.mjs test/setup.test.mjs test/client.test.mjs
+node --test test/*.test.mjs
 ```
 
-- 72 tests: 71 pass, 0 fail, 1 skipped (network-gated by default).
-- `DSH_PWSH7_NETWORK_TESTS=1` enables the live GitHub release / HEAD checks: 30/30 pass.
+- 141 tests: 137 pass, 0 fail, 4 skipped by default (2 environment-gated real-install probes,
+  1 network-gated live GitHub check, 1 registry test restricted to GitHub Actions runners).
+- `DSH_PWSH7_NETWORK_TESTS=1` enables the live GitHub release / HEAD checks.
 - The environment override prefix is `DSH_PWSH7_*` (`APP_ROOT`, `TAR`, `NETWORK_TESTS`).
 
 ## Publishing (maintainers)
@@ -248,7 +308,9 @@ npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
 
 `0.1.0` was the first public release. `0.1.1` is the first release published through npm
 **Trusted Publishing** (OIDC) by GitHub Actions, and fixes the npm-hosted README cross-links.
-`0.2.0` adds the Web setup dialog and moves installation into one shared coordinator.
+`0.2.0` adds the Web setup dialog and moves installation into one shared coordinator. `0.2.2` adds
+user/system installation scopes with persistent PATH. `0.3.0` adds the settings page with self-check,
+route switching, user-scope uninstall, and migration to the system scope.
 Earlier internal iterations (0.2.x/0.3.x) included MSYS2 bash routing and used a different package
 name; that scope was removed because MSYS2/Cygwin cannot start under the DSH Windows ACL sandbox.
 The historical evidence stays in the build workspace (`sandbox-recon/FINDINGS.md`), not in this
@@ -256,12 +318,16 @@ package.
 
 ## Uninstall
 
+To remove the plugin and restore DSH's native preset:
+
 ```
 plugin_manager action=remove_bundle target=dsh-plugin-pwsh7
 ```
 
-The native Windows preset is restored and `pwsh` returns to DSH's default resolution. The per-user
-directory `%LOCALAPPDATA%\dsh\pwsh7\` is not deleted automatically.
+`pwsh` then returns to DSH's default resolution. The per-user directory
+`%LOCALAPPDATA%\dsh\pwsh7\` is not deleted automatically by the plugin manager; use
+**Settings → PowerShell 7 → Uninstall** (or `shell_router action="uninstall"`) first if you also
+want to remove the plugin-managed PowerShell 7 installation and its managed `PATH` entry.
 
 ## License
 

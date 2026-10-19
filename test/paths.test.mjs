@@ -16,6 +16,7 @@ import {
   discoveredPortablePwshPaths,
   fileOrSymlinkExists,
   findPwsh,
+  isPathInside,
   isPowerShell7,
   probePwsh,
   readRouterConfig,
@@ -164,6 +165,17 @@ test('versioned portable pwsh installs are discovered newest first', { skip: pro
   assert.equal(discovered[1], W.join(baseDir, '7.6.7', 'pwsh.exe'));
   assert.equal(discovered[2], W.join(baseDir, '7.5.4', 'pwsh.exe'));
   assert.ok(candidatePwshPaths(env).includes(discovered[0]));
+});
+
+test('isPathInside is prefix- and case-safe', () => {
+  assert.equal(isPathInside('C:\\a\\pwsh7\\x', 'C:\\a\\pwsh7'), true);
+  assert.equal(isPathInside('C:\\a\\pwsh7', 'C:\\a\\pwsh7\\'), true);
+  assert.equal(isPathInside('"C:\\a\\pwsh7\\x"', 'C:\\a\\pwsh7'), true);
+  assert.equal(isPathInside('C:\\A\\PWSH7\\X', 'c:\\a\\pwsh7'), true);
+  assert.equal(isPathInside('C:\\a\\pwsh7-backup\\x', 'C:\\a\\pwsh7'), false);
+  assert.equal(isPathInside('C:\\a\\pwsh7\\..\\outside', 'C:\\a\\pwsh7'), false);
+  assert.equal(isPathInside('C:\\other', 'C:\\a\\pwsh7'), false);
+  assert.equal(isPathInside('C:\\a\\pwsh7\\..\\pwsh7\\x', 'C:\\a\\pwsh7'), true);
 });
 
 // ---------------------------------------------------------------------------

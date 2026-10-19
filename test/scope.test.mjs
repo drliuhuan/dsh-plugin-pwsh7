@@ -1,8 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateScope, installDirectory, pathUpdateScript, updateInstallPath, requireSystemAdministrator } from '../lib/install-scope.mjs';
+import path from 'node:path';
+import {
+  decodeWindowsPowerShellError,
+  validateScope,
+  installDirectory,
+  pathUpdateScript,
+  pathRemovalScript,
+  removePathEntriesUnder,
+  removeProcessPathEntriesUnder,
+  updateInstallPath,
+  requireSystemAdministrator,
+  isProcessElevated,
+} from '../lib/install-scope.mjs';
 import { wingetInstallArgs } from '../lib/install.mjs';
 import { createSetupService } from '../lib/setup-service.mjs';
+import { routerRoot } from '../lib/paths.mjs';
+
+const W = path.win32;
 
 test('scopes validate and system uses Program Files', () => {
   assert.throws(() => validateScope('machine'), /unsupported install scope/);
@@ -49,6 +64,123 @@ test('system installation rejects an unelevated host', async () => {
     assert.ok(script.includes('IsInRole'));
     return { ok: false, stderr: 'System installation requires administrator rights' };
   } }), /requires administrator rights/);
+});
+
+// Real Windows PowerShell 5.1 stderr when piped: CLIXML envelope + _xNNNN_ escapes.
+const CLIXML_ELEVATION_ERROR = '#< CLIXML\r\n'
+  + '<Objs Version="1.1.0.1" xmlns="http://schemas.microsoft.com/powershell/2004/04">'
+  + '<S S="Error">Exception: _x000D__x000A_System installation requires administrator rights. '
+  + 'Run the DSH host as administrator and retry._x000D__x000A_'
+  + '  + CategoryInfo          : NotSpecified: (:) [], RuntimeException_x000D__x000A_</S>'
+  + '<S S="Error">&lt;detail&gt; &amp; more_x000D__x000A_</S></Objs>';
+
+test('decodeWindowsPowerShellError turns CLIXML into readable lines', () => {
+  const decoded = decodeWindowsPowerShellError(CLIXML_ELEVATION_ERROR);
+  assert.match(decoded, /System installation requires administrator rights/);
+  assert.match(decoded, /<detail> & more/);
+  assert.ok(!/CLIXML|<Objs|<S S=/.test(decoded), decoded);
+  assert.ok(decoded.split('\n').length >= 2, decoded);
+
+  // Plain text passes through unchanged; empty input is empty.
+  assert.equal(decodeWindowsPowerShellError('Access denied'), 'Access denied');
+  assert.equal(decodeWindowsPowerShellError(''), '');
+  assert.equal(decodeWindowsPowerShellError(undefined), '');
+});
+
+test('requireSystemAdministrator reports a friendly sentence instead of the CLIXML blob', async () => {
+  await assert.rejects(
+    requireSystemAdministrator({ run: async () => ({ ok: false, stderr: CLIXML_ELEVATION_ERROR }) }),
+    (error) => {
+      assert.equal(
+        error.message,
+        'System installation requires administrator rights. Run the DSH host as administrator and retry.',
+      );
+      assert.ok(!/CLIXML|<Objs/.test(error.message), error.message);
+      return true;
+    },
+  );
+});
+
+test('PATH failures surface decoded CLIXML instead of the raw blob', async () => {
+  await assert.rejects(updateInstallPath('D:\\pwsh.exe', {
+    env: { Path: 'C:\\Windows' },
+    scope: 'system',
+    run: async () => ({ ok: false, stderr: CLIXML_ELEVATION_ERROR }),
+  }), (error) => {
+    assert.match(error.message, /System installation requires administrator rights/);
+    assert.ok(!/CLIXML|<Objs/.test(error.message), error.message);
+    return true;
+  });
+});
+
+test('PATH removal script uses the matching hive, preserves the value kind, and broadcasts', () => {
+  for (const [scope, hive] of [['user', 'CurrentUser'], ['system', 'LocalMachine']]) {
+    const script = pathRemovalScript("C:\\O'Brien\\AppData\\Local\\dsh\\pwsh7", scope);
+    assert.ok(script.includes(`Registry]::${hive}`));
+    assert.ok(script.includes("'C:\\O''Brien\\AppData\\Local\\dsh\\pwsh7'"));
+    assert.ok(script.includes('DoNotExpandEnvironmentNames'));
+    assert.ok(script.includes("GetValueKind('Path')"));
+    assert.ok(script.includes('SendMessageTimeout'));
+    assert.ok(script.includes('SetValue'));
+    assert.ok(script.includes("ExpandEnvironmentVariables"));
+  }
+  assert.throws(() => pathRemovalScript('', 'user'), TypeError);
+  assert.throws(() => pathRemovalScript('C:\\root', 'machine'), /unsupported install scope/);
+});
+
+test('removePathEntriesUnder strips router-root PATH entries from the process environment', async () => {
+  const root = 'C:\\Users\\Tester\\AppData\\Local\\dsh\\pwsh7';
+  const env = {
+    Path: [
+      'C:\\Windows',
+      W.join(root, 'powershell7', '7.6.7'),
+      'C:\\Other',
+      W.join(root, 'tmp'),
+    ].join(';'),
+  };
+  const runs = [];
+  const run = async (executable, args) => {
+    runs.push({ executable, args });
+    return { ok: true, stdout: '' };
+  };
+
+  const removed = await removePathEntriesUnder(root, { env, scope: 'user', run });
+  assert.deepEqual(removed, [W.join(root, 'powershell7', '7.6.7'), W.join(root, 'tmp')]);
+  assert.equal(env.Path, 'C:\\Windows;C:\\Other');
+  const script = Buffer.from(runs[0].args.at(-1), 'base64').toString('utf16le');
+  assert.ok(script.includes('Registry]::CurrentUser'));
+  assert.ok(script.includes(root));
+
+  // Idempotent: a second pass runs the registry script but removes no process entries.
+  const again = await removePathEntriesUnder(root, { env, scope: 'user', run });
+  assert.deepEqual(again, []);
+  assert.equal(env.Path, 'C:\\Windows;C:\\Other');
+  assert.equal(runs.length, 2);
+
+  // A registry failure still surfaces to the caller (and leaves unrelated entries alone).
+  await assert.rejects(removePathEntriesUnder(root, {
+    env,
+    scope: 'user',
+    run: async () => ({ ok: false, stderr: 'Access denied' }),
+  }), /Access denied/);
+  assert.equal(env.Path, 'C:\\Windows;C:\\Other');
+});
+
+test('removeProcessPathEntriesUnder keeps non-router entries and tolerates a missing PATH', () => {
+  const root = routerRoot({ LOCALAPPDATA: 'C:\\Users\\Tester\\AppData\\Local' });
+  const env = { PATH: `${W.join(root, 'powershell7')};C:\\Windows;D:\\Tools` };
+  const removed = removeProcessPathEntriesUnder(root, env);
+  assert.deepEqual(removed, [W.join(root, 'powershell7')]);
+  assert.equal(env.PATH, 'C:\\Windows;D:\\Tools');
+  assert.deepEqual(removeProcessPathEntriesUnder(root, {}), []);
+  assert.deepEqual(removeProcessPathEntriesUnder(root, { Path: '' }), []);
+});
+
+test('isProcessElevated parses an injected probe and never throws', async () => {
+  assert.equal(await isProcessElevated({ run: async () => ({ ok: true, stdout: 'elevated\r\n' }) }), true);
+  assert.equal(await isProcessElevated({ run: async () => ({ ok: true, stdout: 'standard\r\n' }) }), false);
+  assert.equal(await isProcessElevated({ run: async () => ({ ok: false, stderr: 'blocked' }) }), false);
+  assert.equal(await isProcessElevated({ run: async () => { throw new Error('spawn failed'); } }), false);
 });
 
 test('setup forwards scope even when another scope is already installed', async (t) => {
