@@ -305,7 +305,7 @@ function makeService(t, overrides = {}) {
   return service;
 }
 
-test('route table names the eight exact setup/maintenance routes', () => {
+test('route table names the eleven exact setup/maintenance routes', () => {
   const noop = () => {};
   const rows = setupRouteRows({
     state: noop,
@@ -313,6 +313,9 @@ test('route table names the eight exact setup/maintenance routes', () => {
     install: noop,
     cancel: noop,
     route: noop,
+    dialect: noop,
+    onboarding: noop,
+    latest: noop,
     uninstall: noop,
     relocate: noop,
     selfcheck: noop,
@@ -323,6 +326,9 @@ test('route table names the eight exact setup/maintenance routes', () => {
     SETUP_ROUTES.install,
     SETUP_ROUTES.cancel,
     SETUP_ROUTES.route,
+    SETUP_ROUTES.dialect,
+    SETUP_ROUTES.onboarding,
+    SETUP_ROUTES.latest,
     SETUP_ROUTES.uninstall,
     SETUP_ROUTES.relocate,
     SETUP_ROUTES.selfcheck,
@@ -378,13 +384,18 @@ test('installRouterFeatures wires the prompt and routes from the executor row', 
   assert.equal(sections.length, 1);
   assert.equal(sections[0].name, 'tool:pwsh7-router');
   assert.equal(sections[0].order, 5);
-  assert.match(sections[0].text, /setup dialog/);
+  assert.equal(typeof sections[0].text, 'function');
+  assert.match(sections[0].text(), /setup dialog/);
+  assert.doesNotMatch(sections[0].text(), /dialect/i);
   assert.deepEqual(routes.map((row) => row.path), [
     SETUP_ROUTES.state,
     SETUP_ROUTES.events,
     SETUP_ROUTES.install,
     SETUP_ROUTES.cancel,
     SETUP_ROUTES.route,
+    SETUP_ROUTES.dialect,
+    SETUP_ROUTES.onboarding,
+    SETUP_ROUTES.latest,
     SETUP_ROUTES.uninstall,
     SETUP_ROUTES.relocate,
     SETUP_ROUTES.selfcheck,
@@ -478,4 +489,46 @@ test('GET /pwsh7/events opens an SSE stream with the current snapshot', (t) => {
 
   req.emit('close');
   assert.equal(res.ended, true, 'the stream is closed with the request');
+});
+
+test('POST /pwsh7/latest compares the newest release with the installed executable', async (t) => {
+  const service = makeService(t, {
+    detect: () => routerState({ found: true, version: '7.6.7' }),
+    probe: async () => ({ ok: true, version: '7.6.7' }),
+    resolveLatest: async () => ({ version: '7.7.0', url: 'https://example.test/pwsh.zip' }),
+  });
+  const handlers = createSetupHandlers(service);
+
+  const res = makeResponse();
+  await handlers.latest(makeRequest({ method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }), res);
+  assert.equal(res.statusCode, 200);
+  const payload = res.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.latest.version, '7.7.0');
+  assert.equal(payload.latest.current, '7.6.7');
+  assert.equal(payload.latest.updateAvailable, true);
+  assert.equal(payload.state.latest.updateAvailable, true);
+
+  const cached = makeResponse();
+  await handlers.latest(makeRequest({ method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }), cached);
+  assert.equal(cached.json().latest.version, '7.7.0');
+});
+
+test('POST /pwsh7/latest keeps the installed state when the check fails', async (t) => {
+  const service = makeService(t, {
+    detect: () => routerState({ found: true, version: '7.6.7' }),
+    probe: async () => ({ ok: true, version: '7.6.7' }),
+    resolveLatest: async () => {
+      throw new Error('offline');
+    },
+  });
+  const handlers = createSetupHandlers(service);
+  const res = makeResponse();
+  await handlers.latest(makeRequest({ method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }), res);
+  assert.equal(res.statusCode, 200);
+  const payload = res.json();
+  assert.equal(payload.latest.version, null);
+  assert.equal(payload.latest.current, '7.6.7');
+  assert.match(payload.latest.error, /offline/);
+  assert.equal(payload.latest.updateAvailable, null);
 });

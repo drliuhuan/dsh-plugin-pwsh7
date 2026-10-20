@@ -4,6 +4,80 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-10-20
+
+### Added
+
+- **Opt-in prompt injection with two levels** (`dialect` in `config.json`, default **off**):
+  - *Common PowerShell 7 guidance* (1,337 chars ≈ 335 tokens/request): states that `pwsh` is
+    PowerShell 7 (not bash, not cmd) and lists the bash-only forms that fail with their PowerShell
+    equivalents (`export`/`NAME=value`, `[[ ]]`, heredoc, `source`, `$(...)`, `for … do`,
+    POSIX tools → cmdlets, `/dev/null` → `$null`), plus the rewrite-after-a-parser-error rule.
+  - *Force PowerShell 7 mode* (1,442 chars ≈ 361 tokens/request): additionally substitutes the
+    PowerShell equivalent when the request names a POSIX tool. Checking it also checks the common
+    level; the level is normalized so `force` cannot be set without `common`.
+  Both are selectable in the **setup dialog** and on the **Settings → PowerShell 7** page, which
+  disclose the token cost and the measured lift. The prompt section reads the stored level on every
+  assembly, so a change applies to the next model step with no restart.
+- **`POST /pwsh7/dialect`** (`{"common": boolean, "force"?: boolean}`) persists the level additively
+  and returns a fresh state snapshot; the install route accepts the same `dialect` object so the
+  setup dialog can record the choice while it installs. `shell_router status` reports the active
+  level, and the self-check verifies the exact routes.
+- **One-time initial setup dialog even when PowerShell 7 is already present**: the overlay now opens
+  on first load regardless of `found`, shows the detected version, executable, source
+  (automatic detection / `DSH_PWSH_PATH` / router config) and system-vs-user scope, and lets the
+  user confirm the prompt-injection level. `POST /pwsh7/onboarding` stores
+  `onboarding.completed`, so later launches stay quiet; a missing executable still reopens it on
+  every failed run. Confirming after an install records the same flag.
+- **Latest-release check and update actions** (`POST /pwsh7/latest`): the host resolves the newest
+  PowerShell 7 release, probes the installed executable and reports
+  `{version, current, updateAvailable, error}` in the snapshot (cached five minutes, failures stay
+  non-fatal). The setup dialog and the settings page show a compact fact list (version, executable,
+  scope, source); with a user-folder copy they offer *Update in user folder* and *Install
+  system-wide* (elevated, removes the user copy and its PATH entry), and with a system copy they
+  offer *Update system-wide*. Dialog copy was shortened to labels instead of paragraphs.
+- **Composer quick toggle** (`conversation.input.right`, beside the model selector): a compact
+  `pwsh7` chip whose text and rounded border follow the level — green for forced, blue for common,
+  grey for off. Clicking it opens a menu (Off / Common / Force, like the model selector's own
+  menu); choosing a level asks for confirmation first (`Cancel` / `Switch`) because switching
+  mid-session alters the request prefix and may drop the prompt cache; only `Switch` posts
+  `POST /pwsh7/dialect`. The chip polls `/pwsh7/state` every 15 s and hides itself when the host has
+  no setup routes.
+- **A/B evidence for the contract** (`docs/dialect-ab.md`): on twelve bash-inviting tasks with
+  5 samples each, the contract raised the correct-command rate from 38–42% to 98% (the earlier,
+  shorter draft reached 67–90%); on ordinary phrasing both arms scored 100% (ceiling).
+- **Failure-time dialect hint** (`lib/dialect.mjs`): a failed command's stderr gets one
+  `[pwsh7]` line appended when PowerShell reports a parser error (English and zh-CN) or
+  "command not recognized", mapping common POSIX names to their PowerShell 7 replacements
+  (`grep` → `Select-String`, `cat` → `Get-Content`, …). Delivered by the executor's `execute`
+  hook; it never changes the exit code or the command itself.
+
+### Fixed
+
+- **First-run dialog flashed and closed before it could be read**: the dialog opened on the first
+  snapshot, then the next SSE/poll frame (`found: true`, phase `idle`) took the "installed outside
+  the dialog" branch and closed it. That branch now closes only when `onboarding.completed` is
+  true, so the dialog stays open until the user confirms (or dismisses it). Covered by a client
+  test that replays the first load plus two state frames.
+
+### Tests
+
+- `test/dialect.test.mjs`: prompt levels and normalization, hint selection (parse error / unknown
+  command / mapped POSIX name / non-parser failure), single-append memoization, success passthrough.
+- `test/dialect-config.test.mjs`: defaults, `force` implies `common`, key preservation,
+  prompt-size disclosure, the HTTP route (persist / validate / 405), and the install-route path.
+- `test/client.test.mjs`: the settings page renders both levels with their disclosed cost, the
+  setup dialog offers them while the force level stays disabled until common is checked, the
+  detected-PowerShell state renders the compact fact list, and a user-folder copy with an available
+  update renders both update buttons plus the system-removal hint.
+- `test/setup.test.mjs`: the latest-release route (update detected / offline check keeps the
+  installed state).
+- `test/client.test.mjs` (composer chip): registration in `conversation.input.right`, the chip
+  colour per level, the menu contents, and the confirmation path that posts the chosen `dialect`
+  only after `Switch`.
+- `test/onboarding.test.mjs`: default flag, key preservation, snapshot field, and the HTTP route
+  (persist / validate / 405).
+
 ## [0.3.0] - 2026-10-19
 
 ### Added
@@ -119,6 +193,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bilingual README (English/Chinese), bilingual plugin-manager locale, and a PowerShell 7 icon.
 - 49 unit tests (48 pass, 1 network-gated skip).
 
+[0.3.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.0...v0.2.1

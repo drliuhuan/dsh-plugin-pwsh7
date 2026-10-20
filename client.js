@@ -30,6 +30,9 @@
   var ROUTE_CANCEL = '/pwsh7/cancel';
   /** Maintenance routes used by the Settings page (v0.3.0). */
   var ROUTE_ROUTE = '/pwsh7/route';
+  var ROUTE_DIALECT = '/pwsh7/dialect';
+  var ROUTE_ONBOARDING = '/pwsh7/onboarding';
+  var ROUTE_LATEST = '/pwsh7/latest';
   var ROUTE_UNINSTALL = '/pwsh7/uninstall';
   var ROUTE_RELOCATE = '/pwsh7/relocate';
   var ROUTE_SELFCHECK = '/pwsh7/selfcheck';
@@ -48,12 +51,12 @@
 
   var EN = {
     title: 'PowerShell 7 is required',
-    lead: 'This deployment runs the pwsh tool through PowerShell 7, but pwsh.exe was not found on this machine.',
-    body: 'Choose an installation scope. The matching user or system PATH will be updated. Install location: {path}.',
+    lead: 'PowerShell 7 was not found on this machine.',
+    body: 'Install location: {path}. Choose a scope.',
     scopeLabel: 'Installation scope',
     userScope: 'Current user (no administrator rights)',
     systemScope: 'System (run DSH as administrator)',
-    hint: 'The archive is about 100 MB. Extracting uses the Windows built-in tar.exe; no downloaded installer is executed.',
+    hint: 'About 100 MB; extracted locally, no installer is run.',
     download: 'Download and install',
     later: 'Not now',
     cancel: 'Cancel download',
@@ -78,6 +81,31 @@
     manual: 'Manual download',
     retryHint: 'If the download keeps failing, install PowerShell 7 from {url}, then try again.',
     pathLabel: 'Install location',
+    detectedTitle: 'PowerShell 7 is ready',
+    detectedBody: 'Version {version} at {path}. This plugin did not install it; the executable was detected automatically and the pwsh tool already uses it.',
+    detectedSource: 'Source: {source} · {scope} installation. Choose the prompt guidance for this deployment, then continue.',
+    sourceDetected: 'automatic detection',
+    sourceEnv: 'DSH_PWSH_PATH',
+    sourceConfig: 'router config',
+    onboardingSaving: 'Saving the setup choice…',
+    infoVersion: 'Version',
+    infoLocation: 'Location',
+    infoScope: 'Scope',
+    infoSource: 'Source',
+    latestLine: 'Latest {latest}; installed {current}.',
+    updateUser: 'Update in user folder',
+    updateSystem: 'Update system-wide',
+    installSystem: 'Install system-wide',
+    systemRemovalHint: 'Removes the user copy and its PATH entry.',
+    latestError: 'Update check failed: {error}',
+    checkingLatest: 'Checking for the latest version…',
+    promptToggle: 'PowerShell 7 prompt guidance',
+    levelOff: 'Off',
+    levelCommon: 'Common',
+    levelForce: 'Force',
+    switchConfirm: 'Switching changes the model request prefix and may drop the prompt cache (KV cache). Switch anyway?',
+    switchConfirmButton: 'Switch',
+    saveFailed: 'Could not update: {error}',
     // Settings page (settings.section, id `pwsh7`) ---------------------------
     settingsNav: 'PowerShell 7',
     settingsTitle: 'PowerShell 7',
@@ -89,6 +117,17 @@
     statusReadyNoVersion: 'PowerShell 7 is ready',
     sectionInstall: 'Installation',
     sectionRoute: 'Routing',
+    sectionDialect: 'Prompt guidance',
+    dialectHint: 'Optional system-prompt injection that teaches the model PowerShell 7 syntax. Both levels are off by default; enabling them adds prompt tokens to every request.',
+    dialectCommon: 'Common PowerShell 7 guidance',
+    dialectCommonHint: 'Names the dialect and lists the bash-only forms with their PowerShell replacements. About {tokens} tokens per request ({chars} characters).',
+    dialectForce: 'Force PowerShell 7 mode',
+    dialectForceHint: 'Also replaces the PowerShell equivalent when the request names a POSIX tool; requires the common guidance. About {tokens} tokens per request ({chars} characters).',
+    dialectMeasured: 'Measured on 12 bash-inviting tasks with 5 samples each: 38–42% correct commands without guidance, 98% with both levels (docs/dialect-ab.md).',
+    dialectSaved: 'Prompt guidance updated.',
+    dialectSaving: 'Saving prompt guidance…',
+    dialectToggleCommon: 'Common guidance',
+    dialectToggleForce: 'Force substitution',
     sectionActions: 'Maintenance',
     labelPsVersion: 'PowerShell version',
     labelPath: 'Executable',
@@ -96,6 +135,7 @@
     labelScope: 'Installation scope',
     labelMethod: 'Install method',
     labelConfig: 'Configuration file',
+    labelLatest: 'Latest version',
     labelManaged: 'Managed by this plugin',
     labelRemovable: 'Removable from this page',
     labelUserCopy: 'Per-user copy',
@@ -193,6 +233,31 @@
     manual: '手动下载',
     retryHint: '如果下载一直失败，请从 {url} 安装 PowerShell 7，然后重试。',
     pathLabel: '安装位置',
+    detectedTitle: 'PowerShell 7 已就绪',
+    detectedBody: '版本 {version}，位于 {path}。本插件没有安装它；可执行文件是自动识别到的，`pwsh` 工具已经在使用它。',
+    detectedSource: '来源：{source} · {scope}安装。请为本次部署选择提示词注入档位，然后继续。',
+    sourceDetected: '自动识别',
+    sourceEnv: 'DSH_PWSH_PATH',
+    sourceConfig: '路由配置',
+    onboardingSaving: '正在保存初始设置…',
+    infoVersion: '版本',
+    infoLocation: '位置',
+    infoScope: '范围',
+    infoSource: '来源',
+    latestLine: '最新 {latest}；当前 {current}。',
+    updateUser: '升级用户目录',
+    updateSystem: '升级系统级',
+    installSystem: '安装到系统级',
+    systemRemovalHint: '会删除用户目录副本及其 PATH 条目。',
+    latestError: '检查更新失败：{error}',
+    checkingLatest: '正在检查最新版本…',
+    promptToggle: 'PowerShell 7 提示词注入',
+    levelOff: '关闭',
+    levelCommon: '常见',
+    levelForce: '强制',
+    switchConfirm: '切换会改变模型请求前缀，可能丢失输入缓存（KV cache）。仍要切换吗？',
+    switchConfirmButton: '切换',
+    saveFailed: '更新失败：{error}',
     // 设置页（settings.section，id 为 `pwsh7`） -----------------------------
     settingsNav: 'PowerShell 7',
     settingsTitle: 'PowerShell 7',
@@ -204,6 +269,17 @@
     statusReadyNoVersion: 'PowerShell 7 已就绪',
     sectionInstall: '安装信息',
     sectionRoute: '路由方式',
+    sectionDialect: '提示词注入',
+    dialectHint: '可选的系统提示词注入，教模型使用 PowerShell 7 语法。两档默认都关闭；开启后每次请求都会增加提示词 token。',
+    dialectCommon: '常见 PowerShell 7 提示词注入',
+    dialectCommonHint: '声明当前方言，并列出 bash 写法及其 PowerShell 替代。每次请求约 {tokens} tokens（{chars} 字符）。',
+    dialectForce: '强制 PowerShell 7 模式',
+    dialectForceHint: '当请求点名 POSIX 工具时也替换为等价 PowerShell 命令；依赖常见注入。每次请求约 {tokens} tokens（{chars} 字符）。',
+    dialectMeasured: '在 12 个诱导 bash 的任务上各采样 5 次：无提示时 38–42% 命令正确，两档全开时 98%（见 docs/dialect-ab.md）。',
+    dialectSaved: '提示词注入设置已更新。',
+    dialectSaving: '正在保存提示词注入设置…',
+    dialectToggleCommon: '常见注入',
+    dialectToggleForce: '强制替换',
     sectionActions: '维护操作',
     labelPsVersion: 'PowerShell 版本',
     labelPath: '可执行文件',
@@ -211,6 +287,7 @@
     labelScope: '安装范围',
     labelMethod: '安装方式',
     labelConfig: '配置文件',
+    labelLatest: '最新版本',
     labelManaged: '由本插件托管',
     labelRemovable: '可在此卸载',
     labelUserCopy: '当前用户副本',
@@ -375,6 +452,42 @@
     '.pwsh7_segBtn:disabled{opacity:.5;cursor:not-allowed}',
     '.pwsh7_segBtn:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}',
     '.pwsh7_actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}',
+    '.pwsh7_toggle{display:flex;align-items:flex-start;gap:8px;min-width:0;cursor:pointer}',
+    '.pwsh7_toggle input{margin:3px 0 0;flex:none}',
+    '.pwsh7_toggleBody{display:flex;flex-direction:column;gap:2px;min-width:0}',
+    '.pwsh7_toggleTitle{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary)}',
+    '.pwsh7_toggleHint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+    '.pwsh7_dialect{display:flex;flex-direction:column;gap:6px;margin-top:6px}',
+    '.pwsh7_info{display:flex;flex-direction:column;gap:4px;margin:6px 0}',
+    '.pwsh7_infoRow{display:grid;grid-template-columns:72px minmax(0,1fr);gap:4px 10px;align-items:baseline}',
+    '.pwsh7_infoLabel{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+    '.pwsh7_infoValue{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);word-break:break-all}',
+    '.pwsh7_dock{position:relative;display:inline-flex;align-items:center;gap:3px;min-width:0;font-size:13px}',
+    '.pwsh7_chip{height:20px;padding:0 4px;border-radius:5px;border:1px solid var(--dsw-alias-border-l2);',
+    'background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;',
+    'line-height:18px;cursor:pointer}',
+    '.pwsh7_chip[data-state=common]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}',
+    '.pwsh7_chip[data-state=force]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_chip:hover{filter:brightness(1.08)}',
+    '.pwsh7_chip:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}',
+    '.pwsh7_menu{position:absolute;bottom:calc(100% + 8px);left:0;z-index:50;width:224px;padding:4px;',
+    'border-radius:10px;border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);',
+    'box-shadow:var(--dsw-elevation-soft);display:flex;flex-direction:column}',
+    '.pwsh7_menuItem{display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;border:0;border-radius:7px;',
+    'background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;text-align:left;cursor:pointer}',
+    '.pwsh7_menuItem:hover{background:var(--dsw-alias-bg-layer-2)}',
+    '.pwsh7_menuItem[data-selected=true]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}',
+    '.pwsh7_menuLabel{flex:1;min-width:0}',
+    '.pwsh7_dot{width:6px;height:6px;border-radius:999px;flex:none;background:var(--dsw-alias-state-idle-primary)}',
+    '.pwsh7_dot[data-state=common]{background:var(--dsw-alias-state-business-primary)}',
+    '.pwsh7_dot[data-state=force]{background:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_check{flex:none;font-size:11px;color:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_dockError{font-size:11px;color:var(--dsw-alias-state-error-primary);max-width:220px;overflow-wrap:anywhere}',
+    '.pwsh7_menuConfirm{margin:6px 8px 4px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
+    '.pwsh7_menuActions{display:flex;gap:8px;justify-content:flex-end;padding:4px 6px 6px}',
+    '.pwsh7_menuBtn{height:24px;padding:0 10px;border-radius:6px;border:1px solid var(--dsw-alias-border-l2);',
+    'background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}',
+    '.pwsh7_menuPrimary{background:var(--dsw-alias-state-business-primary);border-color:transparent;color:#fff}',
     '.pwsh7_actionHint{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
     '.pwsh7_confirm{display:flex;flex-direction:column;gap:8px;padding:10px 12px;',
     'border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-base)}',
@@ -523,6 +636,33 @@
       configPath: textOrNull(raw.configPath),
       route: raw.route === 'system' ? 'system' : 'plugin',
       routeConfigured: raw.routeConfigured === true,
+      dialect: (function (rawDialect) {
+        var source = rawDialect !== null && typeof rawDialect === 'object' ? rawDialect : {};
+        var sizes = source.sizes !== null && typeof source.sizes === 'object' ? source.sizes : {};
+        var common = source.common === true;
+        return {
+          common: common,
+          force: common && source.force === true,
+          commonTokens: typeof sizes.commonTokens === 'number' ? sizes.commonTokens : null,
+          commonChars: typeof sizes.commonChars === 'number' ? sizes.commonChars : null,
+          forcedTokens: typeof sizes.forcedTokens === 'number' ? sizes.forcedTokens : null,
+          forcedChars: typeof sizes.forcedChars === 'number' ? sizes.forcedChars : null
+        };
+      })(raw.dialect),
+      onboarding: {
+        completed: raw.onboarding !== null && typeof raw.onboarding === 'object' && raw.onboarding.completed === true
+      },
+      latest: (function (rawLatest) {
+        var source = rawLatest !== null && typeof rawLatest === 'object' ? rawLatest : {};
+        return {
+          version: textOrNull(source.version),
+          current: textOrNull(source.current),
+          updateAvailable: source.updateAvailable === true,
+          checkedAt: typeof source.checkedAt === 'number' ? source.checkedAt : null,
+          error: textOrNull(source.error)
+        };
+      })(raw.latest),
+      source: textOrNull(raw.source),
       systemPath: textOrNull(raw.systemPath),
       elevationAvailable: elevation !== null && elevation.available === true,
       elevationRequired: elevation === null || elevation.requiredForSystem !== false,
@@ -637,6 +777,15 @@
     var scope = scopeState[0];
     var setScope = scopeState[1];
 
+    /** Prompt-injection choice made in this dialog; defaults come from the host snapshot. */
+    var dialectCommonState = React.useState(false);
+    var dialectCommon = dialectCommonState[0];
+    var setDialectCommon = dialectCommonState[1];
+    var dialectForceState = React.useState(false);
+    var dialectForce = dialectForceState[0];
+    var setDialectForce = dialectForceState[1];
+    var dialectTouched = React.useRef(false);
+
     var dismissed = React.useRef(0);
     /** True only while the user has hidden a RUNNING install; a new busy phase may re-open it. */
     var suppressBusy = React.useRef(false);
@@ -660,7 +809,16 @@
       if (!initialised.current) {
         initialised.current = true;
         dismissed.current = Number(next.missingSeq) || 0;
-        if (next.found !== true) setOpen(true);
+        if (next.dialect !== null && typeof next.dialect === 'object' && dialectTouched.current !== true) {
+          setDialectCommon(next.dialect.common === true);
+          setDialectForce(next.dialect.common === true && next.dialect.force === true);
+        }
+        // The initial setup dialog opens once even when PowerShell 7 is already present: it
+        // confirms the executable and its source, and records the prompt-injection choice.
+        var onboardingDone = next.onboarding !== null
+          && typeof next.onboarding === 'object'
+          && next.onboarding.completed === true;
+        if (next.found !== true || onboardingDone !== true) setOpen(true);
         return;
       }
       if (next.found !== true) {
@@ -673,10 +831,15 @@
         if (seq > dismissed.current || (running && !suppressBusy.current)) setOpen(true);
         return;
       }
-      // Installed outside the dialog (or after a finished job): a plain "found" frame closes it;
-      // a finished job keeps it open so the success panel is visible.
+      // A "found" frame closes the dialog only after the initial setup was confirmed: with an
+      // existing PowerShell 7 the dialog is the first-run confirmation surface, and SSE/poll
+      // frames keep arriving while the user reads it — closing on those would make it flash and
+      // disappear. A finished job still keeps the success panel visible.
       suppressBusy.current = false;
-      if (next.phase !== 'done') setOpen(false);
+      var onboardingConfirmed = next.onboarding !== null
+        && typeof next.onboarding === 'object'
+        && next.onboarding.completed === true;
+      if (onboardingConfirmed && next.phase !== 'done') setOpen(false);
     }
 
     function refresh() {
@@ -749,17 +912,34 @@
         body: JSON.stringify(body || {})
       }).then(function (response) {
         return response.json().then(function (data) {
-          if (!response.ok) throw new Error(data && data.error ? data.error : 'HTTP ' + response.status);
+          if (!response.ok || (data && data.ok === false)) {
+            var failure = new Error(data && data.error ? data.error : 'HTTP ' + response.status);
+            failure.status = response.status;
+            failure.payload = data !== null && typeof data === 'object' ? data : {};
+            throw failure;
+          }
           return data;
         });
       });
     }
 
-    function startInstall() {
+    /** Ask the host once per open for the newest release (it caches and never throws). */
+    function checkLatest() {
+      return post(ROUTE_LATEST, {})
+        .then(function (data) {
+          if (data && data.state) adopt(data.state);
+        })
+        .catch(function () {
+          // A failed check keeps the installed state; the update row simply stays absent.
+        });
+    }
+
+    /** Update the current per-user copy in place (keeps the folder and PATH). */
+    function startUserUpdate() {
       if (busy) return;
       setBusy(true);
       setLocalError(null);
-      post(ROUTE_INSTALL, { method: 'auto', scope: scope })
+      post(ROUTE_INSTALL, { method: 'auto', scope: 'user', dialect: { common: dialectCommon, force: dialectForce } })
         .then(function (data) {
           if (data && data.state) adopt(data.state);
         })
@@ -768,6 +948,86 @@
         })
         .then(function () {
           if (mounted.current) setBusy(false);
+        });
+    }
+
+    /** Install or update system-wide with the elevation preflight, optionally removing the user copy. */
+    function startSystemInstall(removeUser) {
+      if (busy) return;
+      setBusy(true);
+      setLocalError(null);
+      post(ROUTE_RELOCATE, { method: 'auto', removeUser: removeUser === true })
+        .then(function (data) {
+          if (data && data.state) adopt(data.state);
+        })
+        .catch(function (error) {
+          var payload = error !== null && error !== undefined && error.payload ? error.payload : {};
+          var text = error && error.message ? error.message : String(error);
+          setLocalError(payload.hint ? text + '\n' + payload.hint : text);
+        })
+        .then(function () {
+          if (mounted.current) setBusy(false);
+        });
+    }
+
+    function startInstall() {
+      if (busy) return;
+      setBusy(true);
+      setLocalError(null);
+      post(ROUTE_INSTALL, {
+        method: 'auto',
+        scope: scope,
+        dialect: { common: dialectCommon, force: dialectForce }
+      })
+        .then(function (data) {
+          if (data && data.state) adopt(data.state);
+        })
+        .catch(function (error) {
+          setLocalError(error && error.message ? error.message : String(error));
+        })
+        .then(function () {
+          if (mounted.current) setBusy(false);
+        });
+    }
+
+    /** Save the prompt-injection choice, record the confirmation, and close the dialog. */
+    function applyOnboarding() {
+      if (busy) return;
+      setBusy(true);
+      setLocalError(null);
+      post(ROUTE_DIALECT, { common: dialectCommon, force: dialectForce })
+        .then(function () {
+          return post(ROUTE_ONBOARDING, { completed: true });
+        })
+        .then(function (data) {
+          if (data && data.state) adopt(data.state);
+          setOpen(false);
+        })
+        .catch(function (error) {
+          setLocalError(error && error.message ? error.message : String(error));
+        })
+        .then(function () {
+          if (mounted.current) setBusy(false);
+        });
+    }
+
+    /** Confirm a finished installation: the initial setup is complete once the job succeeded. */
+    function finishAfterInstall() {
+      if (busy) {
+        dismiss();
+        return;
+      }
+      setBusy(true);
+      post(ROUTE_ONBOARDING, { completed: true })
+        .then(function (data) {
+          if (data && data.state) adopt(data.state);
+        })
+        .catch(function () {
+          // The confirmation is best-effort; the install itself already succeeded.
+        })
+        .then(function () {
+          if (mounted.current) setBusy(false);
+          dismiss();
         });
     }
 
@@ -789,6 +1049,7 @@
     React.useEffect(function () {
       mounted.current = true;
       refresh();
+      void checkLatest();
       // Always poll: SSE gives smooth progress, while the poll is the safety net for a carrier
       // that buffers event streams or reports `found` after the initial fetch.
       startPolling();
@@ -918,6 +1179,55 @@
               : interpolate(t('installedNoVersion'), { path: host.path || host.installRoot || '' }))
         )
       ));
+    } else if (host.found === true && !failed && !cancelled) {
+      // Compact confirmation: version, executable, scope and source — the facts the user asked to
+      // see — plus the latest-release row when an update exists.
+      var detectedSource = host.source === 'env' ? t('sourceEnv')
+        : host.source === 'config' ? t('sourceConfig') : t('sourceDetected');
+      var installInfo = host.install !== null && typeof host.install === 'object' ? host.install : {};
+      var detectedScope = installInfo.scope === 'system' ? t('scopeSystem') : t('scopeUser');
+      var detectedPath = typeof host.path === 'string' && host.path.length > 0
+        ? host.path
+        : (typeof host.installRoot === 'string' ? host.installRoot : '');
+      var latestInfo = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
+      var currentVersion = typeof latestInfo.current === 'string'
+        ? latestInfo.current
+        : (typeof host.version === 'string' ? host.version : '');
+      var infoRow = function (key, label, value) {
+        return React.createElement(
+          'div',
+          { key: 'info-' + key, className: 'pwsh7_infoRow' },
+          React.createElement('span', { className: 'pwsh7_infoLabel' }, label),
+          React.createElement('span', { className: 'pwsh7_infoValue' }, value)
+        );
+      };
+      body.push(React.createElement('p', { key: 'ready', className: 'pwsh7_text' }, t('detectedTitle')));
+      body.push(React.createElement(
+        'div',
+        { key: 'info', className: 'pwsh7_info' },
+        infoRow('version', t('infoVersion'), currentVersion === '' ? t('unknown') : currentVersion),
+        infoRow('location', t('infoLocation'), detectedPath),
+        infoRow('scope', t('infoScope'), detectedScope),
+        infoRow('source', t('infoSource'), detectedSource)
+      ));
+      var updateAvailable = latestInfo.updateAvailable === true
+        && typeof latestInfo.version === 'string' && latestInfo.version !== '';
+      if (updateAvailable) {
+        body.push(React.createElement(
+          'p',
+          { key: 'latest', className: 'pwsh7_hint' },
+          interpolate(t('latestLine'), { latest: latestInfo.version, current: currentVersion })
+        ));
+      } else if (latestInfo.error) {
+        body.push(React.createElement(
+          'p',
+          { key: 'latest-error', className: 'pwsh7_hint' },
+          interpolate(t('latestError'), { error: latestInfo.error })
+        ));
+      }
+      if (installInfo.scope !== 'system') {
+        body.push(React.createElement('p', { key: 'system-hint', className: 'pwsh7_hint' }, t('systemRemovalHint')));
+      }
     } else if (failed) {
       body.push(React.createElement(
         'div',
@@ -976,15 +1286,73 @@
       }
     }
 
-    if (!busyPhase(host.phase) && !host.found) {
-      body.push(React.createElement('label', { key: 'scope', className: 'pwsh7_text' },
-        t('scopeLabel'),
-        React.createElement('select', {
-          value: scope, disabled: busy,
-          onChange: function (event) { setScope(event.target.value); }
-        },
-          React.createElement('option', { value: 'user' }, t('userScope')),
-          React.createElement('option', { value: 'system' }, t('systemScope')))));
+    if (!working && !accepted && !failed && !cancelled) {
+      if (!host.found) {
+        body.push(React.createElement('label', { key: 'scope', className: 'pwsh7_text' },
+          t('scopeLabel'),
+          React.createElement('select', {
+            value: scope, disabled: busy,
+            onChange: function (event) { setScope(event.target.value); }
+          },
+            React.createElement('option', { value: 'user' }, t('userScope')),
+            React.createElement('option', { value: 'system' }, t('systemScope')))));
+      }
+      if (host.dialect !== null && typeof host.dialect === 'object') {
+        var sizes = host.dialect.sizes !== null && typeof host.dialect.sizes === 'object' ? host.dialect.sizes : {};
+        var dialogSize = function (value) { return typeof value === 'number' ? String(value) : '?'; };
+        body.push(React.createElement(
+          'div',
+          { key: 'dialect', className: 'pwsh7_dialect' },
+          React.createElement('p', { key: 'label', className: 'pwsh7_text' }, t('sectionDialect')),
+          React.createElement(
+            'label',
+            { key: 'dialect-common', className: 'pwsh7_toggle' },
+            React.createElement('input', {
+              type: 'checkbox',
+              checked: dialectCommon,
+              disabled: busy,
+              onChange: function (event) {
+                var next = event !== null && event.target !== null && event.target.checked === true;
+                dialectTouched.current = true;
+                setDialectCommon(next);
+                if (!next) setDialectForce(false);
+              }
+            }),
+            React.createElement(
+              'span',
+              { className: 'pwsh7_toggleBody' },
+              React.createElement('span', { className: 'pwsh7_toggleTitle' }, t('dialectCommon')),
+              React.createElement('span', { className: 'pwsh7_toggleHint' }, interpolate(t('dialectCommonHint'), {
+                tokens: dialogSize(sizes.commonTokens), chars: dialogSize(sizes.commonChars)
+              }))
+            )
+          ),
+          React.createElement(
+            'label',
+            { key: 'dialect-force', className: 'pwsh7_toggle' },
+            React.createElement('input', {
+              type: 'checkbox',
+              checked: dialectForce,
+              disabled: busy || !dialectCommon,
+              onChange: function (event) {
+                var next = event !== null && event.target !== null && event.target.checked === true;
+                dialectTouched.current = true;
+                setDialectForce(next);
+                if (next) setDialectCommon(true);
+              }
+            }),
+            React.createElement(
+              'span',
+              { className: 'pwsh7_toggleBody' },
+              React.createElement('span', { className: 'pwsh7_toggleTitle' }, t('dialectForce')),
+              React.createElement('span', { className: 'pwsh7_toggleHint' }, interpolate(t('dialectForceHint'), {
+                tokens: dialogSize(sizes.forcedTokens), chars: dialogSize(sizes.forcedChars)
+              }))
+            )
+          ),
+          React.createElement('p', { key: 'measured', className: 'pwsh7_hint' }, t('dialectMeasured'))
+        ));
+      }
     }
 
     // Footer -----------------------------------------------------------------
@@ -1019,7 +1387,63 @@
           type: 'button',
           ref: primaryRef,
           className: 'pwsh7_button pwsh7_primary',
+          onClick: finishAfterInstall
+        },
+        t('done')
+      ));
+    } else if (host.found === true && !failed && !cancelled) {
+      var footerInfo = host.install !== null && typeof host.install === 'object' ? host.install : {};
+      var footerLatest = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
+      var canUpdate = footerLatest.updateAvailable === true;
+      var userCopy = footerInfo.scope !== 'system';
+      footer.push(React.createElement(
+        'button',
+        {
+          key: 'later',
+          type: 'button',
+          className: 'pwsh7_button pwsh7_ghost',
           onClick: dismiss
+        },
+        t('later')
+      ));
+      if (userCopy) {
+        footer.push(React.createElement(
+          'button',
+          {
+            key: 'system',
+            type: 'button',
+            className: 'pwsh7_button pwsh7_outline',
+            disabled: busy,
+            onClick: function () { startSystemInstall(true); }
+          },
+          canUpdate ? t('updateSystem') : t('installSystem')
+        ));
+      }
+      if (canUpdate) {
+        footer.push(React.createElement(
+          'button',
+          {
+            key: 'update',
+            type: 'button',
+            ref: primaryRef,
+            className: 'pwsh7_button pwsh7_primary',
+            disabled: busy,
+            onClick: userCopy
+              ? startUserUpdate
+              : function () { startSystemInstall(false); }
+          },
+          userCopy ? t('updateUser') : t('updateSystem')
+        ));
+      }
+      footer.push(React.createElement(
+        'button',
+        {
+          key: 'continue',
+          type: 'button',
+          ref: canUpdate ? undefined : primaryRef,
+          className: canUpdate ? 'pwsh7_button pwsh7_outline' : 'pwsh7_button pwsh7_primary',
+          disabled: busy,
+          onClick: applyOnboarding
         },
         t('done')
       ));
@@ -1310,6 +1734,20 @@
       });
     }
 
+    function setDialectLevel(nextCommon, nextForce) {
+      if (host === null) return;
+      var common = nextCommon === true;
+      var force = common && nextForce === true;
+      if (host.dialect.common === common && host.dialect.force === force) return;
+      runAction('dialect', function () {
+        return postJson(ROUTE_DIALECT, { common: common, force: force }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+          if (mounted.current) setNotice({ text: t('dialectSaved'), warnings: [] });
+        });
+      });
+    }
+
     function startInstall() {
       runAction('install', function () {
         return postJson(ROUTE_INSTALL, { method: 'auto', scope: 'user' }).then(function (data) {
@@ -1353,6 +1791,13 @@
     React.useEffect(function () {
       mounted.current = true;
       refresh();
+      void postJson(ROUTE_LATEST, {})
+        .then(function (data) {
+          if (data && data.state) adopt(data.state);
+        })
+        .catch(function () {
+          // An offline update check must not disturb the page.
+        });
       // Poll unconditionally: SSE gives smooth progress, the poll is the safety net for a carrier
       // that buffers the stream. The setup dialog does the same, and both may be mounted at once.
       startPolling();
@@ -1573,6 +2018,7 @@
       installRows.push(row('directory', t('labelDirectory'), host.directory === null ? t('unknown') : host.directory, true));
       installRows.push(row('scope', t('labelScope'), scopeLabel(host.scope)));
       installRows.push(row('method', t('labelMethod'), methodLabel(host.method)));
+      installRows.push(row('latest', t('labelLatest'), host.latest.version === null ? t('unknown') : host.latest.version));
     } else {
       installRows.push(React.createElement('p', { key: 'missing', className: 'pwsh7_empty' }, t('installedNone')));
     }
@@ -1626,8 +2072,83 @@
         : null
     );
 
+    // Prompt guidance (opt-in) ----------------------------------------------------
+    var dialect = host.dialect;
+    function dialectToggle(key, label, hint, checked, disabled) {
+      return React.createElement(
+        'label',
+        { key: 'dialect-' + key, className: 'pwsh7_toggle' },
+        React.createElement('input', {
+          type: 'checkbox',
+          checked: checked,
+          disabled: disabled === true || busy,
+          onChange: function (event) {
+            var next = event !== null && event.target !== null && event.target.checked === true;
+            if (key === 'common') setDialectLevel(next, next ? host.dialect.force : false);
+            else setDialectLevel(true, next);
+          }
+        }),
+        React.createElement(
+          'span',
+          { className: 'pwsh7_toggleBody' },
+          React.createElement('span', { className: 'pwsh7_toggleTitle' }, label),
+          React.createElement('span', { className: 'pwsh7_toggleHint' }, hint)
+        )
+      );
+    }
+    function sizeText(value) {
+      return value === null || value === undefined ? '?' : String(value);
+    }
+    var dialectCard = React.createElement(
+      'section',
+      { key: 'dialect', className: 'pwsh7_card' },
+      React.createElement('h3', { key: 'title', className: 'pwsh7_cardTitle' }, t('sectionDialect')),
+      React.createElement('p', { key: 'hint', className: 'pwsh7_actionHint' }, t('dialectHint')),
+      dialectToggle(
+        'common',
+        t('dialectCommon'),
+        interpolate(t('dialectCommonHint'), { tokens: sizeText(dialect.commonTokens), chars: sizeText(dialect.commonChars) }),
+        dialect.common,
+        false
+      ),
+      dialectToggle(
+        'force',
+        t('dialectForce'),
+        interpolate(t('dialectForceHint'), { tokens: sizeText(dialect.forcedTokens), chars: sizeText(dialect.forcedChars) }),
+        dialect.force,
+        !dialect.common
+      ),
+      React.createElement('p', { key: 'measured', className: 'pwsh7_actionHint' }, t('dialectMeasured')),
+      busyAction === 'dialect'
+        ? React.createElement('p', { key: 'saving', className: 'pwsh7_hint' }, t('dialectSaving'))
+        : null
+    );
+
     // Maintenance actions --------------------------------------------------------
     var actionChildren = [];
+
+    if (host.found && host.latest.updateAvailable) {
+      actionChildren.push(React.createElement(
+        'p',
+        { key: 'update-hint', className: 'pwsh7_actionHint' },
+        interpolate(t('latestLine'), {
+          latest: host.latest.version,
+          current: host.latest.current !== null ? host.latest.current : (host.version !== null ? host.version : '')
+        })
+      ));
+      var updateButtons = [];
+      if (host.userCopy) {
+        updateButtons.push(actionButton('update-user', t('updateUser'), 'update-user', {
+          disabled: busy,
+          onClick: startInstall
+        }));
+      }
+      updateButtons.push(actionButton('update-system', t('updateSystem'), 'update-system', {
+        disabled: busy,
+        onClick: startRelocate
+      }));
+      actionChildren.push(React.createElement('div', { key: 'update-row', className: 'pwsh7_actions' }, updateButtons));
+    }
 
     if (!host.found) {
       actionChildren.push(React.createElement('p', { key: 'install-hint', className: 'pwsh7_actionHint' }, t('actionInstallHint')));
@@ -1830,9 +2351,222 @@
             progressCard,
             installCard,
             routeCard,
+            dialectCard,
             actionsCard
           )
         )
+      )
+    );
+  }
+
+  /**
+   * Composer-dock quick toggle for the prompt-injection level.
+   *
+   * Three levels map to the stored `dialect` value: off (grey), common (blue) and forced
+   * (green, common + substitution). A change is never applied silently: switching mid-session
+   * changes the model request prefix and can drop the prompt cache, so the user confirms first.
+   */
+  function Pwsh7PromptToggle(props) {
+    var t = typeof props.t === 'function' ? props.t : fallbackTranslate;
+
+    var stateHook = React.useState(null);
+    var state = stateHook[0];
+    var setState = stateHook[1];
+
+    /** `{common, force}` waiting for the confirmation click, or null. */
+    var pendingHook = React.useState(null);
+    var pending = pendingHook[0];
+    var setPending = pendingHook[1];
+
+    var busyHook = React.useState(false);
+    var busy = busyHook[0];
+    var setBusy = busyHook[1];
+
+    var errorHook = React.useState(null);
+    var error = errorHook[0];
+    var setError = errorHook[1];
+
+    /** Whether the menu is open. */
+    var openHook = React.useState(false);
+    var open = openHook[0];
+    var setOpen = openHook[1];
+
+    var rootRef = React.useRef(null);
+    var mounted = React.useRef(true);
+
+    function adopt(next) {
+      if (!mounted.current) return;
+      if (next === null || typeof next !== 'object') return;
+      var dialect = next.dialect !== null && typeof next.dialect === 'object' ? next.dialect : {};
+      var common = dialect.common === true;
+      setState({ common: common, force: common && dialect.force === true });
+    }
+
+    function refresh() {
+      onlineFetch(ROUTE_STATE, { cache: 'no-store', credentials: 'omit' })
+        .then(function (response) {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        })
+        .then(adopt)
+        .catch(function () {
+          // A host without the route (or a restart in progress) hides the control.
+          if (mounted.current) setState(null);
+        });
+    }
+
+    function levelOf(value) {
+      if (value === null) return 'off';
+      return value.force === true ? 'force' : value.common === true ? 'common' : 'off';
+    }
+
+    var currentLevel = levelOf(state);
+
+    function choose(nextLevel) {
+      if (state === null) return;
+      if (nextLevel === currentLevel) {
+        setPending(null);
+        setOpen(false);
+        return;
+      }
+      setError(null);
+      setPending(nextLevel === 'force'
+        ? { common: true, force: true }
+        : nextLevel === 'common' ? { common: true, force: false } : { common: false, force: false });
+    }
+
+    function applyChoice() {
+      if (pending === null || busy) return;
+      setBusy(true);
+      onlineFetch(ROUTE_DIALECT, {
+        method: 'POST',
+        credentials: 'omit',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(pending)
+      }).then(function (response) {
+        return response.json().then(function (data) {
+          if (!response.ok) throw new Error(data && data.error ? data.error : 'HTTP ' + response.status);
+          return data;
+        });
+      }).then(function (data) {
+        if (data && data.state) adopt(data.state);
+        setPending(null);
+        setOpen(false);
+      }).catch(function (failure) {
+        if (mounted.current) setError(failure && failure.message ? failure.message : String(failure));
+      }).then(function () {
+        if (mounted.current) setBusy(false);
+      });
+    }
+
+    React.useEffect(function () {
+      mounted.current = true;
+      refresh();
+      var timer = setInterval(refresh, 15000);
+      return function () {
+        mounted.current = false;
+        clearInterval(timer);
+      };
+    }, []);
+
+    // Close on an outside click or Escape, like the host's own menus.
+    React.useEffect(function () {
+      if (open !== true) return undefined;
+      if (typeof document === 'undefined' || typeof document.addEventListener !== 'function') return undefined;
+      function onPointerDown(event) {
+        var node = rootRef.current;
+        if (node !== null && typeof node.contains === 'function' && node.contains(event.target)) return;
+        setOpen(false);
+        setPending(null);
+      }
+      function onKeyDown(event) {
+        if (event.key === 'Escape') {
+          setOpen(false);
+          setPending(null);
+        }
+      }
+      document.addEventListener('mousedown', onPointerDown, true);
+      document.addEventListener('keydown', onKeyDown, true);
+      return function () {
+        document.removeEventListener('mousedown', onPointerDown, true);
+        document.removeEventListener('keydown', onKeyDown, true);
+      };
+    }, [open]);
+
+    if (state === null) return null;
+
+    var labels = { off: t('levelOff'), common: t('levelCommon'), force: t('levelForce') };
+    var menuItems = ['off', 'common', 'force'].map(function (level) {
+      return React.createElement(
+        'button',
+        {
+          key: level,
+          type: 'button',
+          className: 'pwsh7_menuItem',
+          role: 'menuitemradio',
+          'aria-checked': level === currentLevel ? 'true' : 'false',
+          'data-selected': level === currentLevel ? 'true' : 'false',
+          disabled: busy,
+          onClick: function () { choose(level); }
+        },
+        React.createElement('span', { className: 'pwsh7_dot', 'data-state': level, 'aria-hidden': 'true' }),
+        React.createElement('span', { className: 'pwsh7_menuLabel' }, labels[level]),
+        level === currentLevel
+          ? React.createElement('span', { className: 'pwsh7_check', 'aria-hidden': 'true' }, '✓')
+          : null
+      );
+    });
+    var menuContent = pending === null
+      ? menuItems
+      : [
+        React.createElement('p', { key: 'confirm', className: 'pwsh7_menuConfirm' }, t('switchConfirm')),
+        React.createElement(
+          'div',
+          { key: 'actions', className: 'pwsh7_menuActions' },
+          React.createElement(
+            'button',
+            { type: 'button', className: 'pwsh7_menuBtn', disabled: busy, onClick: function () { setPending(null); } },
+            t('confirmCancel')
+          ),
+          React.createElement(
+            'button',
+            { type: 'button', className: 'pwsh7_menuBtn pwsh7_menuPrimary', disabled: busy, onClick: applyChoice },
+            t('switchConfirmButton')
+          )
+        )
+      ];
+    return React.createElement(
+      React.Fragment,
+      null,
+      // This component mounts on its own (the dialog and the settings page may never render), so
+      // it must carry the stylesheet itself; without it the chip falls back to native button chrome.
+      React.createElement('style', { key: 'style', dangerouslySetInnerHTML: { __html: CSS } }),
+      React.createElement(
+        'div',
+        { key: 'dock', className: 'pwsh7_dock', ref: rootRef },
+        React.createElement(
+          'button',
+          {
+            type: 'button',
+            className: 'pwsh7_chip',
+            'data-state': currentLevel,
+            'aria-haspopup': 'menu',
+            'aria-expanded': open === true ? 'true' : 'false',
+            title: t('promptToggle'),
+            onClick: function () {
+              setOpen(open !== true);
+              setPending(null);
+              setError(null);
+            }
+          },
+          'pwsh7'
+        ),
+        error !== null
+          ? React.createElement('span', { className: 'pwsh7_dockError' }, interpolate(t('saveFailed'), { error: error }))
+          : null,
+        open === true
+          ? React.createElement('div', { className: 'pwsh7_menu', role: 'menu', 'aria-label': t('promptToggle') }, menuContent)
+          : null
       )
     );
   }
@@ -1895,6 +2629,18 @@
                 locale: LOCALE_NS,
                 inject: function () { return { t: translate }; }
               }, Pwsh7Settings);
+            });
+
+            // `conversation.input.right` is a list slot rendered immediately before the model
+            // selector in the composer's control row, so the chip sits beside the model picker.
+            ctx.slots.inject('conversation.input.right', function () {
+              return ctx.slots.register({
+                name: 'conversation.input.right',
+                id: 'pwsh7-prompt-toggle',
+                order: 20,
+                locale: LOCALE_NS,
+                inject: function () { return { t: translate }; }
+              }, Pwsh7PromptToggle);
             });
           }
         };

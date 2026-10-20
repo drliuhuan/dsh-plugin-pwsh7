@@ -38,6 +38,9 @@ const SETTINGS_KEYS = [
   'actionFailed', 'elevationRequired', 'elevationHint', 'busyJob', 'selfcheckRun',
   'selfcheckRunning', 'selfcheckSummary', 'selfcheckAt', 'selfcheckEmpty', 'statusWarn',
   'statusFail', 'confirmCancel',
+  'sectionDialect', 'dialectHint', 'dialectCommon', 'dialectCommonHint', 'dialectForce',
+  'dialectForceHint', 'dialectMeasured', 'dialectSaved', 'dialectSaving',
+  'dialectToggleCommon', 'dialectToggleForce',
   ...SELFCHECK_IDS.map((id) => `selfcheck.${id}`),
 ];
 
@@ -123,6 +126,16 @@ test('the settings page is registered as a settings.section for pwsh7', () => {
   assert.equal(entry.options.label(), dictionaries.en.settingsNav);
   assert.equal(typeof entry.options.inject().t, 'function');
   assert.equal(entry.options.inject().t('routePlugin'), dictionaries.en.routePlugin);
+});
+
+test('the composer dock registers the pwsh7 prompt toggle beside the model picker', () => {
+  assert.match(CLIENT_SOURCE, /ctx\.slots\.inject\('conversation\.input\.right'/);
+  assert.match(CLIENT_SOURCE, /id: 'pwsh7-prompt-toggle'/);
+  const { registrations } = boot();
+  const entry = registrations.find((candidate) => candidate.options.name === 'conversation.input.right');
+  assert.ok(entry, 'the composer control-row slot is registered');
+  assert.equal(entry.options.id, 'pwsh7-prompt-toggle');
+  assert.equal(typeof entry.options.inject().t, 'function');
 });
 
 test('the settings page talks to every v0.3 maintenance route', () => {
@@ -370,7 +383,7 @@ function renderDialog(host) {
   // Hook order in Pwsh7SetupDialog: 0 host snapshot, 1 open, 2 busy, 3 local error, 4 scope.
   const booted = boot(new Map([[0, host], [1, true]]));
   const tree = renderSlot(booted, 'shell.overlay');
-  assert.equal(booted.registrations.length, 2);
+  assert.equal(booted.registrations.length, 3);
   return tree;
 }
 
@@ -424,6 +437,205 @@ test('the dialog renders the installed and failed states', () => {
   });
   assert.match(textOf(failed), /PowerShell 7 could not be installed/);
   assert.match(textOf(failed), /network unreachable/);
+});
+
+test('the settings page renders the opt-in prompt guidance with its disclosed cost', () => {
+  const tree = renderSettings(new Map([[0, makeState({
+    dialect: {
+      common: true,
+      force: true,
+      sizes: { commonChars: 1000, commonTokens: 250, forcedChars: 1200, forcedTokens: 300 },
+    },
+  })]]));
+  const text = textOf(tree);
+  assert.ok(text.includes('Prompt guidance'));
+  assert.ok(text.includes('Common PowerShell 7 guidance'));
+  assert.ok(text.includes('Force PowerShell 7 mode'));
+  assert.ok(text.includes('250 tokens per request (1000 characters)'));
+  assert.ok(text.includes('300 tokens per request (1200 characters)'));
+  assert.ok(text.includes('98%'));
+
+  const boxes = findNode(tree, (node) => node.props !== undefined && node.props.type === 'checkbox');
+  assert.equal(boxes.length, 2);
+  assert.equal(boxes[0].props.checked, true);
+  assert.equal(boxes[1].props.checked, true);
+});
+
+test('an existing PowerShell 7 keeps the first-run dialog open across state frames', async () => {
+  const instances = [];
+  class FakeEventSource {
+    constructor(url) {
+      this.url = url;
+      this.listeners = {};
+      instances.push(this);
+    }
+    addEventListener(name, handler) {
+      (this.listeners[name] ??= []).push(handler);
+    }
+    close() {}
+    emit(name, data) {
+      for (const handler of this.listeners[name] ?? []) handler({ data });
+    }
+  }
+
+  const pending = makeState({ onboarding: { completed: false } });
+  const booted = boot(new Map(), {
+    EventSource: FakeEventSource,
+    fetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve(pending) }),
+  });
+  renderSlot(booted, 'shell.overlay');
+  booted.captured.runEffects();
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(booted.captured.setters[1], true, 'the first load opens it');
+
+    instances[0].emit('state', JSON.stringify(makeState({ onboarding: { completed: false } })));
+    assert.equal(booted.captured.setters[1], true, 'an unchanged frame does not close it');
+
+    instances[0].emit('state', JSON.stringify(makeState({ onboarding: { completed: true } })));
+    assert.equal(booted.captured.setters[1], false, 'the confirmed flag closes it');
+  } finally {
+    booted.captured.dispose();
+  }
+});
+
+test('the setup dialog confirms an already-detected PowerShell 7 and offers the guidance', () => {
+  const tree = renderDialog({
+    found: true,
+    phase: 'idle',
+    missingSeq: 0,
+    path: PWSH_PATH,
+    version: '7.6.7',
+    source: 'detected',
+    install: { scope: 'system', method: 'existing' },
+    onboarding: { completed: false },
+    dialect: {
+      common: false,
+      force: false,
+      sizes: { commonChars: 1000, commonTokens: 250, forcedChars: 1200, forcedTokens: 300 },
+    },
+  });
+  const text = textOf(tree);
+  assert.ok(text.includes('PowerShell 7 is ready'), 'ready title');
+  assert.ok(text.includes('automatic detection'), 'source');
+  assert.ok(text.includes('System'), 'scope');
+  assert.ok(text.includes(PWSH_PATH), 'executable path');
+  assert.ok(text.includes('7.6.7'), 'version');
+  assert.ok(text.includes('Prompt guidance'), 'guidance section');
+  const boxes = findNode(tree, (node) => node.props !== undefined && node.props.type === 'checkbox');
+  assert.equal(boxes.length, 2);
+  const buttons = findNode(tree, (node) => node.props !== undefined && node.props.type === 'button');
+  assert.ok(buttons.some((button) => textOf(button).includes('Done')), 'confirm button');
+});
+
+test('a user-folder install offers the system option and the update paths', () => {
+  const tree = renderDialog({
+    found: true,
+    phase: 'idle',
+    missingSeq: 0,
+    path: PWSH_PATH,
+    version: '7.6.7',
+    source: 'config',
+    install: { scope: 'user', method: 'portable' },
+    onboarding: { completed: false },
+    latest: { version: '7.7.0', current: '7.6.7', updateAvailable: true, checkedAt: 1, error: null },
+    dialect: {
+      common: false,
+      force: false,
+      sizes: { commonChars: 1000, commonTokens: 250, forcedChars: 1200, forcedTokens: 300 },
+    },
+  });
+  const text = textOf(tree);
+  assert.ok(text.includes('Latest 7.7.0; installed 7.6.7.'), 'update line');
+  assert.ok(text.includes('Removes the user copy and its PATH entry.'), 'removal hint');
+  const labels = findNode(tree, (node) => node.props !== undefined && node.props.type === 'button')
+    .map((button) => textOf(button));
+  assert.ok(labels.includes('Update in user folder'), 'user update');
+  assert.ok(labels.includes('Update system-wide'), 'system update');
+  assert.ok(labels.includes('Done'), 'confirm');
+});
+
+test('the setup dialog offers the prompt guidance when the host reports it', () => {
+  const tree = renderDialog({
+    found: false,
+    phase: 'idle',
+    missingSeq: 1,
+    installRoot: 'C:\\root',
+    releasesUrl: 'https://example.test',
+    dialect: {
+      common: false,
+      force: false,
+      sizes: { commonChars: 1000, commonTokens: 250, forcedChars: 1200, forcedTokens: 300 },
+    },
+  });
+  const text = textOf(tree);
+  assert.ok(text.includes('Prompt guidance'));
+  assert.ok(text.includes('250 tokens per request'));
+  const boxes = findNode(tree, (node) => node.props !== undefined && node.props.type === 'checkbox');
+  assert.equal(boxes.length, 2);
+  assert.equal(boxes[0].props.checked, false);
+  assert.equal(boxes[1].props.disabled, true);
+});
+
+test('the composer chip colours the pwsh7 word per level', () => {
+  const cases = [
+    [{ common: false, force: false }, 'off'],
+    [{ common: true, force: false }, 'common'],
+    [{ common: true, force: true }, 'force'],
+  ];
+  for (const [dialect, level] of cases) {
+    const booted = boot(new Map([[0, dialect]]));
+    const tree = renderSlot(booted, 'conversation.input.right');
+    const chip = findNode(tree, (node) => node.props !== undefined && node.props.className === 'pwsh7_chip');
+    assert.equal(chip.length, 1);
+    assert.equal(textOf(chip[0]), 'pwsh7');
+    assert.equal(chip[0].props['data-state'], level);
+    assert.equal(chip[0].props['aria-haspopup'], 'menu');
+    // The chip mounts alone; it must ship its own stylesheet or it renders as a native button.
+    const styles = findNode(tree, (node) => node.type === 'style');
+    assert.ok(styles.length >= 1, 'the dock carries its stylesheet');
+    assert.ok(styles[0].props.dangerouslySetInnerHTML.__html.includes('.pwsh7_chip'));
+  }
+});
+
+test('clicking the chip opens a menu with the three levels', () => {
+  const booted = boot(new Map([[0, { common: true, force: true }], [4, true]]));
+  const tree = renderSlot(booted, 'conversation.input.right');
+  const items = findNode(tree, (node) => node.props !== undefined && node.props.role === 'menuitemradio');
+  assert.equal(items.length, 3);
+  assert.deepEqual(items.map((item) => textOf(item).trim().replace(/\s*✓$/, '')), ['Off', 'Common', 'Force']);
+  assert.equal(items[2].props['data-selected'], 'true');
+  assert.equal(items[0].props['data-selected'], 'false');
+  assert.ok(textOf(items[2]).includes('✓'), 'the selected row is checked');
+  const dots = findNode(tree, (node) => node.props !== undefined && node.props.className === 'pwsh7_dot');
+  assert.deepEqual(dots.map((dot) => dot.props['data-state']), ['off', 'common', 'force']);
+});
+
+test('changing the level asks for confirmation before posting it', async () => {
+  const calls = [];
+  const booted = boot(new Map([
+    [0, { common: true, force: true }],
+    [4, true],
+    [1, { common: false, force: false }],
+  ]), {
+    fetch: (url, options) => {
+      calls.push({ url: String(url), body: options && options.body });
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, state: { dialect: { common: false, force: false } } }),
+      });
+    },
+  });
+  const tree = renderSlot(booted, 'conversation.input.right');
+  assert.ok(textOf(tree).includes('may drop the prompt cache'), 'confirmation copy');
+  const buttons = findNode(tree, (node) => node.props !== undefined && node.props.type === 'button');
+  const confirm = buttons.find((button) => textOf(button) === 'Switch');
+  assert.ok(confirm, 'a confirm button is rendered');
+  confirm.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const post = calls.find((call) => call.url.endsWith('/pwsh7/dialect'));
+  assert.ok(post, 'the dialect route received the change');
+  assert.deepEqual(JSON.parse(post.body), { common: false, force: false });
 });
 
 // ---------------------------------------------------------------------------

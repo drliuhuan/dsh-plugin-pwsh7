@@ -55,7 +55,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.0
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.1
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -80,6 +80,49 @@ The model-facing `shell_router` tool:
 | `selfcheck` | Runs the same read-only self-check as the settings page and returns `ok` / `warn` / `fail` lines. |
 | `route` | Persists `route: "plugin"` or `route: "system"` and reports the new route. |
 | `uninstall` | Removes the plugin-managed per-user portable install (files, temporary directory, managed PATH entry) while keeping the routing preference. |
+
+### Model guidance (PowerShell 7 dialect)
+
+Prompt injection is **opt-in and off by default** (upgrading never starts spending prompt tokens).
+Two levels are available in the **setup dialog** (when PowerShell 7 is missing) and in
+**Settings → PowerShell 7 → Prompt guidance**; the choice is stored as `dialect` in `config.json` and
+takes effect on the next model step without a restart.
+
+| Level | What it adds | Cost per request |
+|---|---|---|
+| Common guidance | States that `pwsh` is PowerShell 7 (not bash, not cmd), lists the bash-only forms that fail beside their PowerShell replacements (`export`, `[[ ]]`, heredoc, `source`, `$(...)`, `for … do`, POSIX tools), and tells the model to rewrite after a parser error. | 1,337 chars ≈ 335 tokens |
+| Force PowerShell 7 mode | Adds: substitute the PowerShell equivalent even when the request names a POSIX tool. Requires the common level (checking it also checks common). | 1,442 chars ≈ 361 tokens |
+
+Measured on 12 bash-inviting tasks with 5 samples each (see `docs/dialect-ab.md`): 38–42% correct
+commands without guidance, 98% with both levels. On ordinary phrasing both arms scored 100%, so the
+cost buys reliability against bash-flavoured requests, not a general improvement.
+
+Independently of the system prompt, when a command still fails the executor appends one actionable
+`[pwsh7]` line to its stderr: a parser error (English and zh-CN) gets a syntax reminder, and a
+"command not recognized" error maps common POSIX names to their PowerShell 7 replacements (`grep` →
+`Select-String`, `cat` → `Get-Content`, `ls` → `Get-ChildItem`, …). The hint never changes the exit
+code or the command, and is appended once per settled result.
+
+### Composer quick toggle (Web)
+
+The client contributes a compact **pwsh7** chip to `conversation.input.right` — the list slot the
+composer renders immediately before its model selector — so it sits beside the model picker in the
+input row, not in a status bar. Clicking the chip opens a small menu (like the model selector's own
+menu) with three levels; the chip's word and rounded border carry the state:
+
+| Level | Chip |
+|---|---|
+| Forced (common + substitution) | green text, green rounded border |
+| Common guidance only | blue text, blue rounded border |
+| Off | grey text, grey rounded border |
+
+Choosing a different level opens an inline confirmation inside the menu: switching mid-session
+changes the model request prefix and can drop the prompt cache (KV cache), so only `Switch` posts
+`POST /pwsh7/dialect`; `Cancel` or an outside click leaves the stored level untouched. The chip
+polls `/pwsh7/state` every 15 s (so a change made in Settings shows up here) and hides itself when
+the host has no setup routes.
+
+### Settings page (Web)
 
 ### Settings page (Web)
 
@@ -110,19 +153,32 @@ The browser half also registers a **PowerShell 7** page in the Web GUI's setting
 The browser half renders into DSH's root `shell.overlay` slot, so it works in the ordinary Web GUI
 and in the desktop shell without a second window:
 
-- **When it opens:** on first load when `pwsh.exe` cannot be found, and again every time a `pwsh`
-  tool run fails for that reason (`missingSeq`). "Not now" hides it until the next failed run; a
-  page reload opens it again while PowerShell 7 is still missing.
-- **What it does:** `Download and install` starts the shared, user-initiated installation job.
-  The dialog shows `downloading → extracting → verifying`, transferred bytes, total, and percent.
-  `Cancel download` aborts it.
+- **When it opens:** on first load **even when `pwsh.exe` is already present** — that first run is
+  the initial setup: it confirms whether PowerShell 7 exists, shows where it came from (automatic
+  detection, `DSH_PWSH_PATH`, or the router config; system vs user installation), and lets the user
+  choose the prompt-injection level. Confirming stores `onboarding.completed`, so later launches do
+  not reopen it. While `pwsh.exe` is still missing, it also reopens on every failed `pwsh` run
+  (`missingSeq`); "Not now" hides it until the next failed run, and a page reload opens it again
+  while PowerShell 7 is still missing.
+- **Detected state:** when PowerShell 7 is found the dialog shows a compact fact list — version,
+  executable, scope (System / Current user) and source — plus the prompt-guidance choices. `Done`
+  saves the guidance and the confirmation.
+- **Updates:** the dialog asks `/pwsh7/latest` for the newest release and compares it with the
+  installed executable. With a user-folder copy it offers **Update in user folder** and **Install
+  system-wide** (elevated; removes the user copy and its PATH entry). With a system copy it offers
+  **Update system-wide**. A failed check leaves the installed state untouched and only shows the
+  error line. Settings → PowerShell 7 shows the same update actions later.
+- **What it does when missing:** `Download and install` starts the shared, user-initiated
+  installation job. The dialog shows `downloading → extracting → verifying`, transferred bytes,
+  total, and percent. `Cancel download` aborts it.
 - **Why one job:** the dialog and the settings page share one coordinator, so whichever surface the
   user starts an install from shows the same progress, and two installs cannot race on the same
   archive under `%LOCALAPPDATA%\dsh\pwsh7\tmp`. The model's `shell_router` tool never starts one.
 - **Transport:** `GET /pwsh7/state` (snapshot), `GET /pwsh7/events` (SSE, progress coalesced to
-  ~7 frames/s), `POST /pwsh7/install`, `POST /pwsh7/cancel`. SSE drives smooth progress; a 3 s
-  `/pwsh7/state` poll stays active as the fallback for carriers that buffer event streams.
-  These routes are same-origin and accept POST bodies only as `application/json`.
+  ~7 frames/s), `POST /pwsh7/install`, `POST /pwsh7/cancel`, `POST /pwsh7/dialect`,
+  `POST /pwsh7/onboarding`, `POST /pwsh7/latest`. SSE drives smooth progress; a 3 s
+  `/pwsh7/state` poll stays active as the fallback for carriers that buffer event streams. These
+  routes are same-origin and accept POST bodies only as `application/json`.
 - **Failure:** the dialog keeps the installer's message, offers `Retry`, and links to the official
   PowerShell releases page. A failed install does not affect `pwsh` routing until one succeeds.
 - **Scope:** the dialog belongs to the Web GUI. A headless/CLI composition still gets `shell_router`
@@ -310,7 +366,9 @@ npx npm@12 trust revoke dsh-plugin-pwsh7 --id <trust-id>
 **Trusted Publishing** (OIDC) by GitHub Actions, and fixes the npm-hosted README cross-links.
 `0.2.0` adds the Web setup dialog and moves installation into one shared coordinator. `0.2.2` adds
 user/system installation scopes with persistent PATH. `0.3.0` adds the settings page with self-check,
-route switching, user-scope uninstall, and migration to the system scope.
+route switching, user-scope uninstall, and migration to the system scope. `0.3.1` adds the opt-in
+prompt-guidance levels (with a measured A/B), latest-release checks with user/system update actions,
+the one-time setup confirmation, and the composer chip beside the model selector.
 Earlier internal iterations (0.2.x/0.3.x) included MSYS2 bash routing and used a different package
 name; that scope was removed because MSYS2/Cygwin cannot start under the DSH Windows ACL sandbox.
 The historical evidence stays in the build workspace (`sandbox-recon/FINDINGS.md`), not in this
