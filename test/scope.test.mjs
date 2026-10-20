@@ -221,11 +221,17 @@ test('Windows PATH persistence is idempotent in both registry scopes', {
     const env = { ...process.env };
     try {
       const executable = `C:\\dsh-pwsh7-path-test-${scope}\\pwsh.exe`;
+      const directory = `C:\\dsh-pwsh7-path-test-${scope}`;
       await updateInstallPath(executable, { env, scope });
       await updateInstallPath(executable, { env, scope });
       const actual = ps(open + "$key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)");
-      assert.equal(actual.split(';').filter(value => value === `C:\\dsh-pwsh7-path-test-${scope}`).length, 1);
-      assert.ok(actual.startsWith(snapshot.value.replace(/;+$/, '')));
+      assert.equal(actual.split(';').filter(value => value === directory).length, 1);
+      assert.equal(actual.split(';')[0], directory, 'the upgraded directory is first');
+      if (snapshot.value.trim()) {
+        const expected = snapshot.value.split(';').filter(value => value && value !== directory);
+        const rest = actual.split(';').filter(value => value && value !== directory);
+        assert.deepEqual(rest.slice(0, expected.length), expected);
+      }
     } finally {
       const value = String(snapshot.value).replaceAll("'", "''");
       ps(open + `$key.SetValue('Path', '${value}', [Microsoft.Win32.RegistryValueKind]${snapshot.kind}); $key.Dispose()`);
