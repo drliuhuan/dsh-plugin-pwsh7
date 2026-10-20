@@ -764,6 +764,9 @@
     var openState = React.useState(false);
     var open = openState[0];
     var setOpen = openState[1];
+    /** Latest `open` for the visibility handler, which outlives a single render. */
+    var openRef = React.useRef(false);
+    openRef.current = open === true;
 
     var busyState = React.useState(false);
     var busy = busyState[0];
@@ -870,6 +873,7 @@
     }
 
     function connectEvents() {
+      if (source.current !== null) return;
       if (typeof EventSource !== 'function') {
         startPolling();
         return;
@@ -1050,13 +1054,37 @@
       mounted.current = true;
       refresh();
       void checkLatest();
-      // Always poll: SSE gives smooth progress, while the poll is the safety net for a carrier
-      // that buffers event streams or reports `found` after the initial fetch.
-      startPolling();
+      // SSE stays connected while the dialog is closed: missingSeq is what re-opens it. The
+      // periodic poll is only the fallback while the dialog is open, and a hidden tab drops both
+      // so an idle page does not keep asking the host for snapshots.
       connectEvents();
+      function onVisibility() {
+        if (typeof document === 'undefined' || typeof document.visibilityState !== 'string') return;
+        if (document.visibilityState === 'hidden') {
+          stopPolling();
+          if (source.current !== null) {
+            try {
+              source.current.close();
+            } catch (error) {
+              // Already closed.
+            }
+            source.current = null;
+          }
+          return;
+        }
+        refresh();
+        connectEvents();
+        if (openRef.current === true) startPolling();
+      }
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        document.addEventListener('visibilitychange', onVisibility);
+      }
       return function () {
         mounted.current = false;
         stopPolling();
+        if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+          document.removeEventListener('visibilitychange', onVisibility);
+        }
         if (source.current !== null) {
           try {
             source.current.close();
@@ -1067,6 +1095,13 @@
         }
       };
     }, []);
+
+    // Poll only while the dialog is actually open; a dismissed dialog is driven by SSE alone.
+    React.useEffect(function () {
+      var hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+      if (open === true && !hidden) startPolling();
+      else stopPolling();
+    }, [open]);
 
     React.useEffect(function () {
       if (!open) return undefined;
@@ -1636,6 +1671,7 @@
     }
 
     function connectEvents() {
+      if (source.current !== null) return;
       if (typeof EventSource !== 'function') {
         startPolling();
         return;
@@ -1798,13 +1834,39 @@
         .catch(function () {
           // An offline update check must not disturb the page.
         });
-      // Poll unconditionally: SSE gives smooth progress, the poll is the safety net for a carrier
-      // that buffers the stream. The setup dialog does the same, and both may be mounted at once.
-      startPolling();
-      connectEvents();
+      function visible() {
+        return typeof document === 'undefined' || document.visibilityState !== 'hidden';
+      }
+      function onVisibility() {
+        if (!visible()) {
+          stopPolling();
+          if (source.current !== null) {
+            try {
+              source.current.close();
+            } catch (error) {
+              // Already closed.
+            }
+            source.current = null;
+          }
+          return;
+        }
+        refresh();
+        connectEvents();
+        startPolling();
+      }
+      if (visible()) {
+        startPolling();
+        connectEvents();
+      }
+      if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+        document.addEventListener('visibilitychange', onVisibility);
+      }
       return function () {
         mounted.current = false;
         stopPolling();
+        if (typeof document !== 'undefined' && typeof document.removeEventListener === 'function') {
+          document.removeEventListener('visibilitychange', onVisibility);
+        }
         if (source.current !== null) {
           try {
             source.current.close();
@@ -2462,7 +2524,12 @@
     React.useEffect(function () {
       mounted.current = true;
       refresh();
-      var timer = setInterval(refresh, 15000);
+      // 60 s is enough for a chip that mostly mirrors Settings; a hidden tab skips the tick so an
+      // idle browser does not keep asking the host for snapshots.
+      var timer = setInterval(function () {
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        refresh();
+      }, 60000);
       return function () {
         mounted.current = false;
         clearInterval(timer);

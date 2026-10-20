@@ -4,6 +4,22 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-10-20
+
+### Changed
+
+- **Host-side hot paths no longer hit the filesystem in steady state**:
+  - `readRouterConfig` is cached by config `mtimeMs`/size and invalidated by every in-process
+    `writeRouterConfig` (which now also bumps a monotonic generation counter);
+  - `readDialect` is memoized against that generation, so model-prompt assembly does no filesystem
+    access at all (measured ~0.028 ms → ~0.002 ms per assembly);
+  - `getRouterState` keeps its cached detection for 10 s (was 1.5 s) and invalidates on a generation
+    bump; `discoveredPortablePwshPaths` caches its `readdir` for 2 s;
+  - `/pwsh7/state` snapshots reuse the generation-memoized config values (~0.39 ms → ~0.29 ms).
+- **Client surfaces poll only when useful**: the setup dialog polls only while it is open (SSE
+  still drives re-opening), both dialog and settings pause polling/SSE while the page is hidden,
+  and the composer chip polls every 60 s instead of 15 s and skips hidden tabs.
+
 ## [0.3.1] - 2026-10-20
 
 ### Added
@@ -193,6 +209,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bilingual README (English/Chinese), bilingual plugin-manager locale, and a PowerShell 7 icon.
 - 49 unit tests (48 pass, 1 network-gated skip).
 
+[0.3.2]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.1...v0.2.2
