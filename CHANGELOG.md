@@ -4,6 +4,44 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-10-20
+
+### Changed
+
+- **System installs and updates raise the UAC prompt themselves.** When the host is not elevated,
+  the portable installer downloads and extracts the verified archive into the user-writable router
+  temp directory, then spawns an elevated helper (`Start-Process -Verb RunAs`) that copies the tree
+  into the system location and updates the machine PATH. The settings page and setup dialog no
+  longer stop with "run DSH as administrator"; the job shows `waiting for administrator approval
+  (UAC)` while the prompt is open, and cancelling it fails the job with a clear message while
+  leaving the per-user copy untouched. A caller that injects its own administrator check keeps the
+  strict preflight behavior.
+- **System installs use a versioned side-by-side directory and prepend PATH.** A machine-wide
+  install now lands in `…\PowerShell\7\<version>` instead of overwriting the existing installation,
+  so upgrading cannot collide with a running `pwsh.exe` or with an official install's files. The
+  new directory is moved to the **front** of the machine PATH (and user PATH for user-scope
+  installs), so other software resolves the upgraded `pwsh`; the older directory stays behind it.
+  The elevated helper also records the real PowerShell error in its result file instead of only
+  an exit code. Relocation/upgrade notices no longer say "moving to system scope" for an install
+  that was already system-wide.
+
+### Fixed
+
+- **Settings showed `Version: Unknown` while the update row named the version.** The install
+  description can only infer a version from a versioned directory or `installed.pwsh.version`, so a
+  system-level install at `…\PowerShell\7\pwsh.exe` had none; the update row probes `pwsh -v` and
+  knew it. The probe result is now cached and used for `install.version` (and the top-level
+  `version`) in every snapshot.
+
+### Changed
+
+- **Settings: one `Update` action**. The maintenance card no longer shows separate *update in
+  user folder* / *update system-wide* buttons; it always offers the single label `Update`
+  (`升级`). A user-folder installation then chooses between *Update in place* (keeps the user copy
+  and its PATH entry) and *Update and move to system* (elevated relocate, removes the user copy and
+  PATH entry); a system installation updates system-wide. The setup dialog keeps its two explicit
+  update labels.
+
 ## [0.3.2] - 2026-10-20
 
 ### Changed
@@ -209,6 +247,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bilingual README (English/Chinese), bilingual plugin-manager locale, and a PowerShell 7 icon.
 - 49 unit tests (48 pass, 1 network-gated skip).
 
+[0.3.3]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.2...v0.3.0

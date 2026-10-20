@@ -508,6 +508,8 @@ test('POST /pwsh7/latest compares the newest release with the installed executab
   assert.equal(payload.latest.current, '7.6.7');
   assert.equal(payload.latest.updateAvailable, true);
   assert.equal(payload.state.latest.updateAvailable, true);
+  // The probe fills the version that `describeInstall` cannot infer without a versioned directory.
+  assert.equal(payload.state.install.version, '7.6.7');
 
   const cached = makeResponse();
   await handlers.latest(makeRequest({ method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }), cached);

@@ -34,7 +34,7 @@ test('PATH script uses matching registry hive and preserves expandable values', 
     assert.ok(script.includes("'C:\\O''Brien'"));
     assert.ok(script.includes('DoNotExpandEnvironmentNames'));
     assert.ok(script.includes("GetValueKind('Path')"));
-    assert.ok(script.includes(' -ieq '));
+    assert.ok(script.includes('$next = (@($target) + $entries) -join'));
     assert.ok(script.includes('SendMessageTimeout'));
   }
 });
@@ -51,11 +51,11 @@ test('PATH update waits for persistence, updates process PATH and avoids duplica
   await updateInstallPath('C:\\PowerShell\\7\\pwsh.exe', { env, scope: 'user', run });
   await updateInstallPath('c:\\powershell\\7\\pwsh.exe', { env, scope: 'user', run });
   assert.equal(calls, 2);
-  assert.equal(env.Path, 'C:\\Windows;C:\\PowerShell\\7');
+  assert.equal(env.Path, 'C:\\PowerShell\\7;C:\\Windows');
   await assert.rejects(updateInstallPath('D:\\pwsh.exe', {
     env, scope: 'system', run: async () => ({ ok: false, stderr: 'Access denied' }),
   }), /Access denied/);
-  assert.equal(env.Path, 'C:\\Windows;C:\\PowerShell\\7');
+  assert.equal(env.Path, 'C:\\PowerShell\\7;C:\\Windows');
 });
 
 test('system installation rejects an unelevated host', async () => {

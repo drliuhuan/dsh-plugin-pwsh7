@@ -55,7 +55,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.2
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.3
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -370,7 +370,10 @@ route switching, user-scope uninstall, and migration to the system scope. `0.3.1
 prompt-guidance levels (with a measured A/B), latest-release checks with user/system update actions,
 the one-time setup confirmation, and the composer chip beside the model selector. `0.3.2` removes
 the plugin's steady-state filesystem probes and idle host polling: cached config reads and detection,
-memoized prompt assembly, and client surfaces that poll only while useful.
+memoized prompt assembly, and client surfaces that poll only while useful. `0.3.3` raises the UAC
+prompt for system installs/updates itself, installs each machine-wide release side-by-side under
+`…\PowerShell\7\<version>`, and puts that directory at the front of the machine PATH so other
+software resolves the upgraded `pwsh`.
 Earlier internal iterations (0.2.x/0.3.x) included MSYS2 bash routing and used a different package
 name; that scope was removed because MSYS2/Cygwin cannot start under the DSH Windows ACL sandbox.
 The historical evidence stays in the build workspace (`sandbox-recon/FINDINGS.md`), not in this

@@ -764,6 +764,44 @@ test('the settings page explains the system-default fallback and its resolved pa
   assert.ok(textOf(missing).includes('No system-wide PowerShell 7 was found'));
 });
 
+test('the maintenance card has one Update action and offers a system-level upgrade for user installs', async () => {
+  const state = makeState({
+    latest: { version: '7.7.0', current: '7.6.7', updateAvailable: true, checkedAt: 1, error: null },
+  });
+
+  const collapsed = renderSettings(new Map([[0, state]]));
+  const labels = findNode(collapsed, (node) => node.props !== undefined && node.props.type === 'button')
+    .map((button) => textOf(button));
+  assert.ok(labels.includes('Update'), 'the only upgrade label is Update');
+  assert.ok(!labels.includes('Update in user folder'), 'no separate user-scope update');
+  assert.ok(!labels.includes('Update system-wide'), 'no separate system update');
+
+  // Hook order: 0 host, 1 local error, 2 busy, 3 confirming, 4 updating.
+  const opened = renderSettings(new Map([[0, state], [4, true]]));
+  const openLabels = findNode(opened, (node) => node.props !== undefined && node.props.type === 'button')
+    .map((button) => textOf(button));
+  assert.ok(openLabels.includes('Update in place'), 'user-folder upgrade stays available');
+  assert.ok(openLabels.includes('Update and move to system'), 'system-level upgrade is offered');
+  assert.ok(textOf(opened).includes('Update PowerShell 7?'), 'confirmation copy');
+
+  const calls = [];
+  const booted = boot(new Map([[0, state], [4, true]]), {
+    fetch: (url, options) => {
+      calls.push({ url: String(url), body: options && options.body });
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ state }) });
+    },
+  });
+  const tree = renderSlot(booted, 'settings.section');
+  const toSystem = findNode(tree, (node) => node.props !== undefined && node.props.type === 'button')
+    .find((button) => textOf(button) === 'Update and move to system');
+  assert.ok(toSystem, 'system-level upgrade button');
+  toSystem.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const post = calls.find((call) => call.url.endsWith('/pwsh7/relocate'));
+  assert.ok(post, 'the upgrade goes through the relocate route');
+  assert.deepEqual(JSON.parse(post.body), { removeUser: true, method: 'auto' });
+});
+
 test('the settings page only offers uninstall when the install is removable', () => {
   const removable = renderSettings(new Map([[0, makeState()]]));
   assert.equal(findByAction(removable, 'uninstall').length, 1);
@@ -817,7 +855,7 @@ test('a self-check result renders localized titles, server detail and status sty
       { id: 'route', status: 'warn', detail: 'route=system' },
     ],
   };
-  const tree = renderSettings(new Map([[0, makeState()], [4, selfcheck]]));
+  const tree = renderSettings(new Map([[0, makeState()], [5, selfcheck]]));
   const text = textOf(tree);
 
   assert.ok(text.includes('Plugin version'), 'localized plugin-version title');
@@ -859,7 +897,7 @@ test('uninstall warnings are shown after a successful removal', () => {
     text: 'The per-user PowerShell 7 copy was removed.',
     warnings: ['C:\\Users\\Tester\\AppData\\Local\\dsh\\pwsh7\\tmp\\pwsh.zip'],
   };
-  const tree = renderSettings(new Map([[0, makeState()], [5, notice]]));
+  const tree = renderSettings(new Map([[0, makeState()], [6, notice]]));
   const text = textOf(tree);
   assert.ok(text.includes('The per-user PowerShell 7 copy was removed.'));
   assert.ok(text.includes('Some files could not be removed:'));
@@ -912,7 +950,7 @@ test('a finished relocation from the state stream becomes exactly one localized 
     });
     instances[0].emit('state', JSON.stringify(state));
 
-    const notice = booted.captured.setters[5];
+    const notice = booted.captured.setters[6];
     assert.ok(notice !== undefined && typeof notice.text === 'string', 'a relocation notice was raised');
     assert.ok(notice.text.includes(systemPath), 'the system executable is named');
     assert.ok(notice.text.includes('Removed 1 per-user copies.'));
@@ -922,12 +960,12 @@ test('a finished relocation from the state stream becomes exactly one localized 
     assert.equal(JSON.stringify(booted.captured.setters[0]), JSON.stringify(state));
 
     // The same outcome arriving in a later frame must not re-announce itself.
-    booted.captured.setters[5] = undefined;
+    booted.captured.setters[6] = undefined;
     instances[0].emit('state', JSON.stringify(state));
-    assert.equal(booted.captured.setters[5], undefined, 'the same relocation is announced once');
+    assert.equal(booted.captured.setters[6], undefined, 'the same relocation is announced once');
 
     // A failed relocation reports its server error through the same notice.
-    booted.captured.setters[5] = undefined;
+    booted.captured.setters[6] = undefined;
     const failed = makeState({
       relocate: {
         ok: false,
@@ -939,8 +977,8 @@ test('a finished relocation from the state stream becomes exactly one localized 
       },
     });
     instances[0].emit('state', JSON.stringify(failed));
-    const failure = booted.captured.setters[5];
-    assert.ok(failure !== undefined && failure.text.includes('Moving PowerShell 7 to the system scope failed'));
+    const failure = booted.captured.setters[6];
+    assert.ok(failure !== undefined && failure.text.includes('System-wide installation failed'));
     assert.ok(failure.text.includes('the per-user copy is locked by a running process'));
   } finally {
     booted.captured.dispose();
@@ -971,3 +1009,4 @@ test('a running host job renders live progress and disables the maintenance butt
     }
   }
 });
+

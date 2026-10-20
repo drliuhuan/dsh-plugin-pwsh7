@@ -95,6 +95,10 @@
     latestLine: 'Latest {latest}; installed {current}.',
     updateUser: 'Update in user folder',
     updateSystem: 'Update system-wide',
+    actionUpdate: 'Update',
+    updateConfirm: 'Update PowerShell 7?',
+    updateInPlace: 'Update in place',
+    updateToSystem: 'Update and move to system',
     installSystem: 'Install system-wide',
     systemRemovalHint: 'Removes the user copy and its PATH entry.',
     latestError: 'Update check failed: {error}',
@@ -162,14 +166,14 @@
     actionInstall: 'Install for current user',
     actionInstallHint: 'Downloads the portable PowerShell 7 archive (about 100 MB) into the per-user plugin folder. No administrator rights are needed.',
     actionRelocate: 'Move to system scope',
-    actionRelocateHint: 'Installs PowerShell 7 for all users and removes the per-user copy. DSH must run as administrator.',
+    actionRelocateHint: 'Installs PowerShell 7 for all users and removes the per-user copy. Windows asks for administrator approval.',
     relocateConfirm: 'Install PowerShell 7 for all users, then remove the per-user copy? This lets every Windows account use it.',
     relocateConfirmButton: 'Move to system',
-    relocateStarted: 'Moving PowerShell 7 to the system scope…',
+    relocateStarted: 'Installing PowerShell 7 system-wide…',
     relocateDone: 'PowerShell 7 is now installed system-wide at {path}.',
     relocateDoneNoPath: 'PowerShell 7 is now installed system-wide.',
     relocateRemoved: 'Removed {count} per-user copies.',
-    relocateFailed: 'Moving PowerShell 7 to the system scope failed: {error}',
+    relocateFailed: 'System-wide installation failed: {error}',
     actionUninstall: 'Uninstall per-user copy',
     actionUninstallHint: 'Removes only the PowerShell 7 copy this plugin installed for the current user, plus its PATH entry.',
     uninstallConfirm: 'Remove the per-user PowerShell 7 copy and its PATH entry? A system-wide installation is not touched.',
@@ -247,6 +251,10 @@
     latestLine: '最新 {latest}；当前 {current}。',
     updateUser: '升级用户目录',
     updateSystem: '升级系统级',
+    actionUpdate: '升级',
+    updateConfirm: '升级 PowerShell 7？',
+    updateInPlace: '仅升级',
+    updateToSystem: '升级并迁移到系统级',
     installSystem: '安装到系统级',
     systemRemovalHint: '会删除用户目录副本及其 PATH 条目。',
     latestError: '检查更新失败：{error}',
@@ -314,14 +322,14 @@
     actionInstall: '为当前用户安装',
     actionInstallHint: '把约 100 MB 的便携版 PowerShell 7 下载到当前用户的插件目录，无需管理员权限。',
     actionRelocate: '迁移到系统范围',
-    actionRelocateHint: '为所有用户安装 PowerShell 7 并删除当前用户副本。DSH 需要以管理员身份运行。',
+    actionRelocateHint: '为所有用户安装 PowerShell 7 并删除当前用户副本。Windows 会请求管理员授权。',
     relocateConfirm: '为所有用户安装 PowerShell 7，然后删除当前用户副本？这样每个 Windows 账户都能使用。',
     relocateConfirmButton: '迁移到系统',
-    relocateStarted: '正在把 PowerShell 7 迁移到系统范围…',
-    relocateDone: 'PowerShell 7 已安装到系统范围：{path}。',
-    relocateDoneNoPath: 'PowerShell 7 已安装到系统范围。',
+    relocateStarted: '正在安装系统级 PowerShell 7…',
+    relocateDone: 'PowerShell 7 已安装到系统级：{path}。',
+    relocateDoneNoPath: 'PowerShell 7 已安装到系统级。',
     relocateRemoved: '已删除 {count} 个当前用户副本。',
-    relocateFailed: '把 PowerShell 7 迁移到系统范围失败：{error}',
+    relocateFailed: '系统级安装失败：{error}',
     actionUninstall: '卸载当前用户副本',
     actionUninstallHint: '只删除本插件为当前用户安装的 PowerShell 7 及其 PATH 项。',
     uninstallConfirm: '删除当前用户的 PowerShell 7 副本及其 PATH 项？系统范围的安装不受影响。',
@@ -1596,6 +1604,11 @@
     var confirming = confirmState[0];
     var setConfirming = confirmState[1];
 
+    /** The upgrade chooser is open. */
+    var updateState = React.useState(false);
+    var updating = updateState[0];
+    var setUpdating = updateState[1];
+
     /** The last `/pwsh7/selfcheck` response, or null before the first run. */
     var checkState = React.useState(null);
     var selfcheck = checkState[0];
@@ -1794,6 +1807,27 @@
     }
 
     function startRelocate() {
+      runAction('relocate', function () {
+        return postJson(ROUTE_RELOCATE, { removeUser: true, method: 'auto' }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+          if (mounted.current) setNotice({ text: t('relocateStarted'), warnings: [] });
+        });
+      });
+    }
+
+    /** "Update" in place: keep the current (user) installation and its PATH entry. */
+    function startUserUpdate() {
+      setUpdating(false);
+      startInstall();
+    }
+
+    /**
+     * "Update" as a system-level install: same relocate path as the migration action, so the user
+     * copy and its PATH entry are removed once the system copy is in place.
+     */
+    function startSystemUpdate() {
+      setUpdating(false);
       runAction('relocate', function () {
         return postJson(ROUTE_RELOCATE, { removeUser: true, method: 'auto' }).then(function (data) {
           if (data.state) adopt(data.state);
@@ -2198,18 +2232,44 @@
           current: host.latest.current !== null ? host.latest.current : (host.version !== null ? host.version : '')
         })
       ));
-      var updateButtons = [];
-      if (host.userCopy) {
-        updateButtons.push(actionButton('update-user', t('updateUser'), 'update-user', {
-          disabled: busy,
-          onClick: startInstall
-        }));
+      if (updating) {
+        var updateButtons = [
+          actionButton('update-cancel', t('confirmCancel'), 'update-cancel', {
+            onClick: function () { setUpdating(false); }
+          })
+        ];
+        if (host.userCopy) {
+          // A user-folder install can upgrade in place or move to the system-level layout.
+          updateButtons.push(actionButton('update-in-place', t('updateInPlace'), 'update-in-place', {
+            disabled: busy,
+            onClick: startUserUpdate
+          }));
+          updateButtons.push(actionButton('update-to-system', t('updateToSystem'), 'update-to-system', {
+            disabled: busy,
+            onClick: startSystemUpdate
+          }));
+        } else {
+          updateButtons.push(actionButton('update-system', t('actionUpdate'), 'update-system', {
+            disabled: busy,
+            onClick: startSystemUpdate
+          }));
+        }
+        actionChildren.push(React.createElement(
+          'div',
+          { key: 'update-confirm', className: 'pwsh7_confirm' },
+          React.createElement('p', { key: 'text', className: 'pwsh7_confirmText' }, t('updateConfirm')),
+          React.createElement('div', { key: 'buttons', className: 'pwsh7_actions' }, updateButtons)
+        ));
+      } else {
+        actionChildren.push(React.createElement(
+          'div',
+          { key: 'update-row', className: 'pwsh7_actions' },
+          actionButton('update-button', t('actionUpdate'), 'update', {
+            disabled: busy,
+            onClick: function () { setUpdating(true); }
+          })
+        ));
       }
-      updateButtons.push(actionButton('update-system', t('updateSystem'), 'update-system', {
-        disabled: busy,
-        onClick: startRelocate
-      }));
-      actionChildren.push(React.createElement('div', { key: 'update-row', className: 'pwsh7_actions' }, updateButtons));
     }
 
     if (!host.found) {

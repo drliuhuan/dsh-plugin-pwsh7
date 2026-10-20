@@ -46,7 +46,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 通过 DSH 插件管理器从 npm 安装：
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.2
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.3
 ```
 
 或从本地目录安装（目录安装会链接源码，便于开发）：
@@ -282,7 +282,8 @@ GitHub Actions 发布的版本，并修正了 npm 页面 README 的跨文件链�
 （自检、路由切换、用户级卸载、迁移到系统范围）；`0.3.1` 增加可选的提示词注入档位（含实测 A/B）、
 最新版检测与用户级/系统级升级动作、一次性初始设置确认，以及模型选择器旁的 `pwsh7` 快捷开关；
 `0.3.2` 移除了稳定状态下的文件系统探测与空闲轮询：配置读取与检测缓存、提示词组装记忆化，以及只在
-需要时才轮询的客户端界面。
+需要时才轮询的客户端界面；`0.3.3` 让系统级安装/升级主动弹出 UAC，把每个机器级版本并列安装到
+`…\PowerShell\7\<version>`，并把该目录前插到机器 PATH，让其他软件也能解析到升级后的 `pwsh`。
 更早的内部迭代（0.2.x/0.3.x）曾包含 MSYS2 bash
 路由并使用过不同的包名；由于 MSYS2/Cygwin 无法在 DSH Windows ACL 沙箱中启动，该部分已被移除。
 历史实测证据保留在构建工作区的 `sandbox-recon/FINDINGS.md`，不在本包内。

@@ -780,9 +780,63 @@ for (const scope of ['user', 'system']) {
     assert.equal(result.scope, scope);
     assert.deepEqual(updated, { executable: result.path, scope });
     assert.equal(readRouterConfig(env).installed.pwsh.scope, scope);
-    if (scope === 'system') assert.equal(result.path, W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'));
+    if (scope === 'system') assert.equal(result.path, W.join(env.ProgramFiles, 'PowerShell', '7', '7.6.7', 'pwsh.exe'));
   });
 }
+
+test('an unelevated system install stages and publishes through the elevation helper', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const root = W.join(base, 'router');
+  let published;
+  let pathUpdates = 0;
+  const result = await installPowerShell7({
+    env, root, scope: 'system', force: true, method: 'portable',
+    isElevated: async () => false,
+    elevatePublish: async ({ from, to, pathDir }) => {
+      published = { from, to, pathDir };
+      fs.cpSync(from, to, { recursive: true, force: true });
+      return { ok: true };
+    },
+    updatePath: async () => { pathUpdates += 1; },
+    fetchImpl: async (url) => url === PWSH_API_LATEST
+      ? jsonResponse(PWSH_RELEASE_FIXTURE) : streamedResponse(fakeArchive(ZIP_MAGIC)),
+    tarPath: REAL_TAR,
+    extractImpl: fakeExtractForPowerShell([]),
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+  assert.equal(result.ok, true, result.message);
+  assert.ok(published, 'the elevated helper was asked to publish');
+  assert.equal(published.to, W.join(env.ProgramFiles, 'PowerShell', '7', '7.6.7'));
+  assert.equal(published.pathDir, published.to);
+  assert.equal(pathUpdates, 0, 'PATH is updated by the elevated helper, not twice');
+  assert.equal(result.path, W.join(published.to, 'pwsh.exe'));
+  assert.equal(readRouterConfig(env).installed.pwsh.scope, 'system');
+  const leftover = fs.readdirSync(W.join(root, 'tmp')).filter((name) => name.startsWith('staging-'));
+  assert.deepEqual(leftover, [], 'the staging directory is removed');
+});
+
+test('a cancelled UAC prompt fails the system install without writing config', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', force: true, method: 'portable',
+    isElevated: async () => false,
+    elevatePublish: async () => ({
+      ok: false,
+      cancelled: true,
+      error: 'administrator approval was cancelled; approve the Windows UAC prompt and retry',
+    }),
+    fetchImpl: async (url) => url === PWSH_API_LATEST
+      ? jsonResponse(PWSH_RELEASE_FIXTURE) : streamedResponse(fakeArchive(ZIP_MAGIC)),
+    tarPath: REAL_TAR,
+    extractImpl: fakeExtractForPowerShell([]),
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /approval was cancelled/);
+  assert.equal(readRouterConfig(env), undefined);
+});
 
 test('PATH failure does not report success or trigger a winget fallback', async (t) => {
   const base = makeTemp(t);
