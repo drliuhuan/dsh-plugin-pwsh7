@@ -47,7 +47,7 @@ overrides only its `pwshPath` resolution:
 
 - Windows 10/11.
 - A DSH profile that supports bundles (`@deepseek-ai/dsh-base` / Web profile). Tested against
-  DSH desktop 0.2.1-rc.2.
+  DSH desktop 0.2.1-rc.3.
 - Node.js >= 22 is only needed to run the repository test suite.
 
 ## Installation

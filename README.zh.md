@@ -38,7 +38,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 
 - Windows 10/11。
 - 支持 bundle 的 DSH profile（`@deepseek-ai/dsh-base` / Web profile）。已在 DSH desktop
-  0.2.1-rc.2 上验证。
+  0.2.1-rc.3 上验证。
 - Node.js >= 22 仅运行仓库测试时需要。
 
 ## 安装

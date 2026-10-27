@@ -4,6 +4,21 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-10-27
+
+### Changed
+
+- **The manifest now declares which DSH it is built for** (`engines.dsh: ^0.2.0-rc.2`) instead of
+  only `engines.node`. Without that declaration the plugin manager and the market can only report
+  `unknown` for this plugin — a host-version question no manifest answered. The range covers the
+  release line it has actually been exercised on, so a newer 0.2.x host still installs and an
+  incompatible line is refused up front.
+
+- Verified against DSH desktop **0.2.1-rc.3** (the previous note named 0.2.1-rc.2). No host API
+  changed between them for this plugin: the `SandboxPwshExecutor` base class, its `execute(spec)`
+  seam, the `pwshPath` getter that this executor overrides, `defineTool`, and the sandbox's
+  `matchesSignature` / `classifyRunnerFailure` helpers all still exist under the same names.
+
 ## [0.3.3] - 2026-10-20
 
 ### Changed
