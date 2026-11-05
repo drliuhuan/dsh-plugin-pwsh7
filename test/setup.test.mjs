@@ -247,8 +247,8 @@ test('start rejects an unsupported method', (t) => {
     detect: () => routerState({ found: false }),
   });
   t.after(() => service.dispose());
-  assert.throws(() => service.start('msi'), /unsupported install method/);
-  assert.deepEqual([...SETUP_METHODS], ['auto', 'portable', 'winget']);
+  assert.throws(() => service.start('bogus'), /unsupported install method/);
+  assert.deepEqual([...SETUP_METHODS], ['auto', 'portable', 'msi', 'winget']);
 });
 
 // ---------------------------------------------------------------------------
@@ -457,7 +457,7 @@ test('POST /pwsh7/install rejects an unsupported method', async (t) => {
   const req = makeRequest({
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ method: 'msi' }),
+    body: JSON.stringify({ method: 'bogus' }),
   });
   const res = makeResponse();
   await handlers.install(req, res);

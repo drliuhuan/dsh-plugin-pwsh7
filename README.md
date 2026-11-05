@@ -55,7 +55,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.3
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.4.0
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -78,7 +78,7 @@ The model-facing `shell_router` tool:
 | `diagnose` | Runs real PowerShell 7 commands under the **current sandbox policy** (version + workspace write) and reports exit codes, stdout/stderr, denial/runner-failure classification, and concrete hints. |
 | `install`, `relocate` | **Not performed by the tool.** They return guidance: installation is user-initiated only, from the setup dialog, Settings → PowerShell 7, or a manual install. |
 | `selfcheck` | Runs the same read-only self-check as the settings page and returns `ok` / `warn` / `fail` lines. |
-| `route` | Persists `route: "plugin"` or `route: "system"` and reports the new route. |
+| `route` | Persists `route: "plugin"`, `route: "system"`, or `route: "pwsh5"` and reports the new route. `pwsh5` forces Windows PowerShell 5.1 and disables every PowerShell 7 prompt layer. |
 | `uninstall` | Removes the plugin-managed per-user portable install (files, temporary directory, managed PATH entry) while keeping the routing preference. |
 
 ### Model guidance (PowerShell 7 dialect)
@@ -108,19 +108,24 @@ code or the command, and is appended once per settled result.
 The client contributes a compact **pwsh7** chip to `conversation.input.right` — the list slot the
 composer renders immediately before its model selector — so it sits beside the model picker in the
 input row, not in a status bar. Clicking the chip opens a small menu (like the model selector's own
-menu) with three levels; the chip's word and rounded border carry the state:
+menu) with three prompt levels plus a routing switch; the chip's word and rounded border carry the
+state:
 
-| Level | Chip |
+| Choice | Chip |
 |---|---|
 | Forced (common + substitution) | green text, green rounded border |
 | Common guidance only | blue text, blue rounded border |
 | Off | grey text, grey rounded border |
+| `pwsh5` (force Windows PowerShell 5.1) | **yellow text and border; label `pwsh5`** |
 
-Choosing a different level opens an inline confirmation inside the menu: switching mid-session
-changes the model request prefix and can drop the prompt cache (KV cache), so only `Switch` posts
-`POST /pwsh7/dialect`; `Cancel` or an outside click leaves the stored level untouched. The chip
-polls `/pwsh7/state` every 15 s (so a change made in Settings shows up here) and hides itself when
-the host has no setup routes.
+Choosing a different prompt level opens an inline confirmation inside the menu: switching
+mid-session changes the model request prefix and can drop the prompt cache (KV cache), so only
+`Switch` posts `POST /pwsh7/dialect`; `Cancel` or an outside click leaves the stored level
+untouched. Choosing `pwsh5` instead posts `POST /pwsh7/route` with `mode: "pwsh5"`: the `pwsh` tool
+runs `…\System32\WindowsPowerShell\v1.0\powershell.exe`, all PowerShell 7 prompt guidance and
+dialect hints are disabled (the stored level is kept), and the previous route is remembered so
+leaving `pwsh5` restores it. The chip polls `/pwsh7/state` every 60 s (so a change made in Settings
+shows up here) and hides itself when the host has no setup routes.
 
 ### Settings page (Web)
 
@@ -131,19 +136,23 @@ The browser half also registers a **PowerShell 7** page in the Web GUI's setting
 
 - **Status:** resolved PowerShell 7 version and executable, install directory, config path, install
   scope and method, plugin version, and whether the install is plugin-managed/removable.
-- **Routing:** one click toggles between *Plugin-managed PowerShell 7* and *System default*. The
-  system-default route resolves only system installations — `Program Files`, the per-user Programs
-  directory, the Store alias, and `PATH` entries outside the plugin root — and falls back to stock
-  DSH behavior (Windows PowerShell 5.1) when no system PowerShell 7 exists. The choice is stored as
+- **Routing:** one click chooses *Plugin-managed PowerShell 7*, *System default*, or *PowerShell 5.1*.
+  The system-default route resolves only system installations — `Program Files`, the per-user
+  Programs directory, the Store alias, and `PATH` entries outside the plugin root — and falls back
+  to Windows PowerShell 5.1 when no system PowerShell 7 exists. The `PowerShell 5.1` route forces
+  that executable directly and turns every PowerShell 7 prompt layer off. The choice is stored as
   `route` in `config.json` and takes effect for the next `pwsh` command.
 - **Self-check:** reports executable resolution, PowerShell major version, route, config validity,
   install/scope consistency, persisted `PATH` entry, shipped-package resolution, sandbox policy, and
   a running install, each as `ok` / `warn` / `fail` with details.
 - **Install/repair:** starts the same shared install job as the setup dialog (user scope), with live
   progress.
-- **Migrate to system:** installs PowerShell 7 under Program Files with a system `PATH` entry
-  (administrator required), then removes the per-user copy and points routing at the system
-  executable. An unelevated DSH host is told exactly what to do instead of hanging on UAC.
+- **Migrate to system / Update system-wide:** runs the official PowerShell 7 MSI, which upgrades
+  `%ProgramFiles%\PowerShell\7\pwsh.exe` in place (the executable Windows Terminal and every other
+  launcher resolve). An unelevated host raises one UAC prompt; the job shows
+  `waiting for administrator approval (UAC)`. After the MSI verifies the new version, the same
+  elevated session removes any legacy `…\PowerShell\7\<version>` side-by-side copy and its machine
+  PATH entry, then the per-user copy and routing are updated.
 - **Uninstall:** available only for the plugin-managed per-user portable install. It removes the
   installed versions and temporary directory, drops the managed `PATH` entry, and leaves
   system/package-manager installations untouched.
@@ -209,6 +218,7 @@ value takes precedence over automatic detection.
 |---|---|
 | `plugin` (default) | `DSH_PWSH_PATH` → `config.pwshPath` → well-known locations including the plugin-managed portable install → `PATH`; missing PowerShell 7 raises the setup hint. |
 | `system` | System-installed locations only: `Program Files`, `Program Files (x86)`, `%LOCALAPPDATA%\Programs`, the Store alias, `PATH` entries outside `%LOCALAPPDATA%\dsh\pwsh7`, then Windows PowerShell 5.1 as the stock last resort. `DSH_PWSH_PATH` and `config.pwshPath` are ignored. |
+| `pwsh5` | Always `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` (Windows PowerShell 5.1). Every PowerShell 7 prompt/dialect layer is disabled; the stored prompt level is kept for when the route is left. |
 
 The settings page switches the route at runtime (`POST /pwsh7/route`); no restart is needed.
 
@@ -241,36 +251,73 @@ or by installing PowerShell 7 outside DSH. The model-facing tool never starts an
 
 Choose `scope: "user"` (default) or `scope: "system"` in the Web dialog.
 
-| Scope | Destination | Persistent PATH |
-|---|---|---|
-| `user` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | Current user (`HKCU\Environment`) |
-| `system` | `%ProgramFiles%\PowerShell\7` | System (`HKLM` environment) |
+| Scope | Method | Destination | Persistent PATH |
+|---|---|---|---|
+| `user` | portable ZIP | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | Current user (`HKCU\Environment`) |
+| `system` | **official MSI, in place** | `%ProgramFiles%\PowerShell\7\pwsh.exe` (canonical; no `<version>` subdirectory) | System, managed by the official installer; the canonical directory is ensured first |
 
-System installation requires starting the DSH host as administrator; an unelevated host fails before downloading. User installation needs no elevation. Both preserve existing PATH entries and registry value types, avoid duplicate entries, refresh the host process PATH, and notify Windows. Already running terminals may need reopening. PATH write failures are reported as installation failures.
+A system install/upgrade runs the official `PowerShell-<version>-win-x64.msi`. The MSI upgrades the
+canonical `…\PowerShell\7\pwsh.exe` in place, so Windows Terminal, Win+R and every other launcher
+see the new version — not just DSH's `pwsh` tool. An unelevated DSH host raises one UAC prompt
+(`Start-Process -Verb RunAs`) and the job reports `waiting for administrator approval (UAC)`. The
+elevated helper verifies the canonical executable's file version before it deletes anything; only
+then does it remove legacy `…\PowerShell\7\<version>` side-by-side copies and their machine PATH
+entries. If Windows scheduled the file replacement for a reboot, the legacy copy and PATH are left
+alone and the job reports that a reboot/closed terminals are required.
+
+User installation needs no elevation and keeps the existing PATH behavior (preserve value types,
+avoid duplicates, refresh the host process PATH, notify Windows). Already running terminals may
+need reopening after a system upgrade.
 
 The settings page can migrate an existing per-user install to the system scope in one step
-(`POST /pwsh7/relocate`): it installs/reuses the Program Files copy, writes the system PATH, removes
-the per-user copy, and points the config at the system executable.
+(`POST /pwsh7/relocate`): it runs the system MSI (or reuses a canonical install that is already
+current), removes the per-user copy, and points the config at the canonical system executable.
 
 To install without the Web GUI, install PowerShell 7 yourself (official MSI/Store/release zip) and
 set `DSH_PWSH_PATH` or `config.json` to its `pwsh.exe`.
 
-Portable download source:
+Download sources:
 
-| Component | Source | Destination |
+| Scope | Asset | Destination |
 |---|---|---|
-| PowerShell 7 | Latest `PowerShell/PowerShell` GitHub release, `PowerShell-*-win-x64.zip` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>\` |
+| `user` | `PowerShell-<version>-win-x64.zip` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>\` |
+| `system` | `PowerShell-<version>-win-x64.msi` | `%ProgramFiles%\PowerShell\7\pwsh.exe` (in place) |
 
 - HTTPS streaming download into `%LOCALAPPDATA%\dsh\pwsh7\tmp`, with progress callbacks and
-  cancellation.
-- Extraction uses the Windows built-in `tar.exe` (bsdtar). No downloaded installer is ever executed.
-- After extraction the new `pwsh.exe` is executed once to verify a major version >= 7 before it is
-  written into `config.json`.
-- `auto` falls back to `winget install Microsoft.PowerShell`; when elevation would be required the
-  result carries the exact manual elevated command instead of hanging on UAC.
+  cancellation. The ZIP is checked for the ZIP magic; the MSI for the OLE/Windows Installer magic.
+- User scope extracts with the Windows built-in `tar.exe` (bsdtar) and runs the new `pwsh.exe` once
+  to verify a major version >= 7 before writing `config.json`.
+- System scope runs the official MSI with `msiexec /i … /qn /norestart ALLUSERS=1`; it does not
+  extract a ZIP into Program Files. The installer is verified against `PowerShell-<version>` by
+  reading the updated `pwsh.exe` file version before cleanup.
+- `auto` falls back to winget only for the user scope. A system-scope failure carries the exact
+  elevated MSI/winget command instead of silently installing a per-user copy.
 - winget receives `--scope user` or `--scope machine`; fallback never changes the selected scope.
 - Live-tested on Windows: 106,364,316-byte zip downloaded in ~31 s, extracted to 244.8 MB, verified
   `7.6.7`.
+
+### Upgrading an existing installation (whatever installed it)
+
+The system-side upgrade does not assume MSI. It resolves the executable a **new terminal** gets
+from the persisted machine+user `PATH`, classifies its installation, and uses the mechanism that
+owns it:
+
+| Original installation | Detection | Upgrade mechanism |
+|---|---|---|
+| Machine-wide official MSI | uninstall registry product `PowerShell 7-x64` (HKLM) | `msiexec /i … ALLUSERS=1` in place, one UAC prompt |
+| Per-user MSI | uninstall product in HKCU | `msiexec /i … ALLUSERS=0` in place (no elevation) |
+| Manual/portable ZIP on `PATH` | `pwsh.exe` in a directory with no MSI/Store/package-manager marker | replace that directory: rename old → copy new → verify file version → delete old; rollback on failure. The PATH entry is unchanged |
+| Chocolatey | `…\chocolatey\bin\pwsh.exe` shim | `choco upgrade powershell-core -y` (elevated when needed) |
+| Scoop | `…\scoop\shims\pwsh.exe` shim | `scoop update pwsh` (global: `-g`, elevated) |
+| Microsoft Store | `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` | `winget upgrade --id Microsoft.PowerShell --source msstore`; if winget is absent, the error explains how to update from Store |
+| Plugin-managed per-user copy | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | download the latest ZIP into a new version directory and repoint the config |
+| Legacy plugin system side-by-side copy | `%ProgramFiles%\PowerShell\7\<version>` | upgrade the canonical MSI, then remove the versioned copy and its PATH entry |
+| `DSH_PWSH_PATH` / row `pwshPath` override | explicit override wins | **refused** with an explanation; update that copy with its own installer or remove the override |
+| Unknown / missing | nothing detected | install the official MSI into Program Files |
+
+The same detection also supports `win-arm64` and `win-x86` releases, chosen from the OS
+architecture. A missing package manager or a failed upgrade never silently falls back to installing
+a separate per-user copy: the result names the concrete recovery command.
 
 ## Sandbox behavior
 
@@ -301,9 +348,11 @@ Portable download source:
 | `client.js` | Browser half: `shell.overlay` setup dialog plus the `settings.section` PowerShell 7 page, SSE + polling, install/route/uninstall/relocate/self-check actions, en/zh copy |
 | `lib/shipped.mjs` | Loads the shipped `@deepseek-ai/*` packages from the running DSH installation (`app.asar`) |
 | `lib/paths.mjs` | PowerShell 7 detection, version probing, `config.json` IO |
-| `lib/route.mjs` | Routing mode persistence, system-default executable resolution, install description |
-| `lib/install.mjs` | User/system-scope portable install (official zip) + winget fallback; progress and phase callbacks |
-| `lib/install-scope.mjs` | Registry PATH persistence/removal (preserving value kind), elevation probes, Program Files scope |
+| `lib/route.mjs` | Routing mode (plugin/system/pwsh5) persistence, system-default and pwsh5 executable resolution, install and legacy-copy description |
+| `lib/install-plan.mjs` | Detects MSI/portable/Store/Chocolatey/Scoop/plugin installs from persisted PATH + registry and chooses the upgrade strategy |
+| `lib/install.mjs` | User-scope portable install (official zip), system-scope MSI/portable-in-place/package-manager upgrades, legacy copy cleanup, winget fallback; progress and phase callbacks |
+| `lib/install-scope.mjs` | Registry PATH persistence/removal (preserving value kind), elevation probes, Program Files scope, system versioned-copy enumeration |
+| `lib/elevate.mjs` | One-shot UAC helper: system MSI upgrade, canonical-version verification, legacy copy/PATH cleanup |
 | `lib/state.mjs` | Process-wide resolution cache shared by the executor and the tool; missing-run signal |
 | `lib/maintenance.mjs` | Removes a plugin-managed per-user portable install (files, temp dir, managed PATH entries) |
 | `lib/selfcheck.mjs` | Read-only self-check: executable, version, route, config, install, PATH, shipped packages, sandbox, job, routes |

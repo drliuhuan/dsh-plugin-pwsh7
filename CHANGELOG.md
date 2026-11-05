@@ -4,6 +4,64 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-11-05
+
+### Fixed
+
+- **A system-level upgrade now upgrades the main installation, not just PATH.** System scope runs
+  the official PowerShell 7 `win-x64.msi` (elevated through UAC when needed), which upgrades
+  `%ProgramFiles%\PowerShell\7\pwsh.exe` in place. That is the executable Windows Terminal, Win+R
+  and every other launcher resolve, so the new version is visible outside DSH. The previous
+  behavior extracted the portable ZIP into `%ProgramFiles%\PowerShell\7\<version>`, prepended that
+  directory to the machine PATH, and left the main MSI installation untouched — which is why a
+  "successful" 7.6.9 upgrade still opened 7.6.6 in Windows Terminal.
+- **A side-by-side copy can no longer hide an outdated main installation.** The latest-release
+  check probes the canonical system executable and reports an update when *it* is old, even if the
+  plugin-managed side-by-side copy is current.
+- **Legacy side-by-side system copies are removed** in the same elevated session, together with
+  their machine PATH entries, once the MSI upgrade is verified. The verification happens before
+  deletion, so a pending reboot keeps the old copy usable.
+- **User-scope `install` also upgrades.** Reusing an existing portable copy now compares its
+  version with the latest release; `Update` no longer reports "using existing" while a newer
+  release exists.
+
+### Added
+
+- **The upgrade now detects how PowerShell 7 was originally installed** and picks the matching
+  mechanism instead of assuming MSI:
+  - machine/per-user **MSI** → official MSI upgrade (`ALLUSERS=1` / `ALLUSERS=0`);
+  - **manual/portable ZIP** on PATH → replace that directory in place (rename → copy → verify →
+    rollback on failure), so the existing PATH entry keeps resolving the upgraded executable;
+  - **Chocolatey** → `choco upgrade powershell-core`;
+  - **Scoop** → `scoop update pwsh` (or `-g` for a global install);
+  - **Microsoft Store** → `winget upgrade … --source msstore`, with Store guidance if winget is
+    unavailable;
+  - **plugin-managed per-user copy** → versioned ZIP update;
+  - **legacy plugin side-by-side system copy** → MSI upgrade of the canonical install plus cleanup;
+  - **`DSH_PWSH_PATH` / row `pwshPath` override** → refused with an explanation instead of being
+    overwritten;
+  - **unknown/no install** → official MSI system install.
+  The main installation is selected from the *persisted* machine+user PATH (the executable a new
+  Windows Terminal resolves), with canonical/plugin fallbacks. Architecture-specific assets
+  (`win-x64`, `win-arm64`, `win-x86`) are chosen from the OS architecture.
+- **Forced Windows PowerShell 5.1 route (`pwsh5`).** The composer chip next to the model picker
+  now offers `pwsh5` (Windows PowerShell 5.1) in addition to Off/Common/Force. Selecting it forces
+  the `pwsh` tool to `…\System32\WindowsPowerShell\v1.0\powershell.exe`, disables every PowerShell 7
+  prompt/dialect layer without discarding the stored level, and turns the chip border yellow. The
+  settings page exposes the same route and remembers the previous route so leaving `pwsh5`
+  restores it.
+- `shell_router` route mode `pwsh5`, self-check/status support for the forced 5.1 executable, and
+  an install-scope helper that lists legacy side-by-side system copies.
+
+### Changed
+
+- System install strategy: `auto`/`portable`/`msi` with `scope: "system"` all use the official MSI
+  in place; `winget` remains an explicit alternative. The user scope keeps the portable ZIP.
+- The settings page shows the canonical system executable and a warning when a legacy versioned
+  copy is still active.
+- Uninstall's junction/reparse-point detection now works on Windows directory junctions that
+  Node's `lstat` reports as plain directories, and removes the junction without following it.
+
 ## [0.3.4] - 2026-10-27
 
 ### Changed
@@ -263,6 +321,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - 49 unit tests (48 pass, 1 network-gated skip).
 
 [0.3.3]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.2...v0.3.3
+[0.4.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.4...v0.4.0
 [0.3.2]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.2.2...v0.3.0

@@ -82,11 +82,13 @@
     retryHint: 'If the download keeps failing, install PowerShell 7 from {url}, then try again.',
     pathLabel: 'Install location',
     detectedTitle: 'PowerShell 7 is ready',
+    detectedTitlePwsh5: 'Windows PowerShell 5.1 is forced',
     detectedBody: 'Version {version} at {path}. This plugin did not install it; the executable was detected automatically and the pwsh tool already uses it.',
     detectedSource: 'Source: {source} · {scope} installation. Choose the prompt guidance for this deployment, then continue.',
     sourceDetected: 'automatic detection',
     sourceEnv: 'DSH_PWSH_PATH',
     sourceConfig: 'router config',
+    sourcePwsh5: 'pwsh5 route',
     onboardingSaving: 'Saving the setup choice…',
     infoVersion: 'Version',
     infoLocation: 'Location',
@@ -107,7 +109,9 @@
     levelOff: 'Off',
     levelCommon: 'Common',
     levelForce: 'Force',
+    levelPwsh5: 'Force pwsh5',
     switchConfirm: 'Switching changes the model request prefix and may drop the prompt cache (KV cache). Switch anyway?',
+    switchToPwsh5Confirm: 'Force the pwsh tool to Windows PowerShell 5.1? All PowerShell 7 prompt guidance and dialect hints are disabled. Other terminals are not changed.',
     switchConfirmButton: 'Switch',
     saveFailed: 'Could not update: {error}',
     // Settings page (settings.section, id `pwsh7`) ---------------------------
@@ -134,6 +138,7 @@
     dialectToggleForce: 'Force substitution',
     sectionActions: 'Maintenance',
     labelPsVersion: 'PowerShell version',
+    labelSystemInstall: 'System installation',
     labelPath: 'Executable',
     labelDirectory: 'Install directory',
     labelScope: 'Installation scope',
@@ -151,16 +156,24 @@
     scopeUser: 'Current user',
     scopeSystem: 'System',
     methodPortable: 'Portable archive',
+    methodMsi: 'Official MSI',
+    methodLegacyPortable: 'Legacy side-by-side copy',
+    methodStore: 'Microsoft Store',
+    methodChocolatey: 'Chocolatey',
+    methodScoop: 'Scoop',
     methodWinget: 'winget',
     methodAuto: 'Automatic',
     methodExisting: 'Existing installation',
     installedNone: 'PowerShell 7 was not found. Install a per-user copy here, or install PowerShell 7 yourself.',
     routePlugin: 'Plugin-managed',
     routeSystem: 'System default',
+    routePwsh5: 'Force pwsh5',
     routePluginHint: 'Prefers the plugin-managed copy (or DSH_PWSH_PATH), then any PowerShell 7 installed on this machine.',
     routeSystemHint: 'Uses a system-wide PowerShell 7 only. When none is installed, the pwsh tool falls back to Windows PowerShell 5.1.',
+    routePwsh5Hint: 'Forces the pwsh tool to Windows PowerShell 5.1. All PowerShell 7 prompt guidance and dialect hints are off while this route is active.',
     routeSystemPath: 'The system default currently resolves to {path}.',
     routeSystemMissing: 'No system-wide PowerShell 7 was found; the pwsh tool will fall back to Windows PowerShell 5.1.',
+    legacySystemHint: 'The active executable is a versioned copy that an older plugin release extracted into the system folder. Update replaces the main system installation with the official MSI and removes the extra copy; that main installation is what Windows Terminal launches.',
     routeSaving: 'Switching the route…',
     routeSaved: 'Routing switched to {mode}.',
     actionInstall: 'Install for current user',
@@ -238,11 +251,13 @@
     retryHint: '如果下载一直失败，请从 {url} 安装 PowerShell 7，然后重试。',
     pathLabel: '安装位置',
     detectedTitle: 'PowerShell 7 已就绪',
+    detectedTitlePwsh5: '已强制使用 Windows PowerShell 5.1',
     detectedBody: '版本 {version}，位于 {path}。本插件没有安装它；可执行文件是自动识别到的，`pwsh` 工具已经在使用它。',
     detectedSource: '来源：{source} · {scope}安装。请为本次部署选择提示词注入档位，然后继续。',
     sourceDetected: '自动识别',
     sourceEnv: 'DSH_PWSH_PATH',
     sourceConfig: '路由配置',
+    sourcePwsh5: 'pwsh5 路由',
     onboardingSaving: '正在保存初始设置…',
     infoVersion: '版本',
     infoLocation: '位置',
@@ -263,7 +278,9 @@
     levelOff: '关闭',
     levelCommon: '常见',
     levelForce: '强制',
+    levelPwsh5: '强制pwsh5',
     switchConfirm: '切换会改变模型请求前缀，可能丢失输入缓存（KV cache）。仍要切换吗？',
+    switchToPwsh5Confirm: '强制把 pwsh 工具切到 Windows PowerShell 5.1？全部 PowerShell 7 提示词注入和方言提示都会关闭。其他终端不受影响。',
     switchConfirmButton: '切换',
     saveFailed: '更新失败：{error}',
     // 设置页（settings.section，id 为 `pwsh7`） -----------------------------
@@ -290,6 +307,7 @@
     dialectToggleForce: '强制替换',
     sectionActions: '维护操作',
     labelPsVersion: 'PowerShell 版本',
+    labelSystemInstall: '系统安装',
     labelPath: '可执行文件',
     labelDirectory: '安装目录',
     labelScope: '安装范围',
@@ -307,16 +325,24 @@
     scopeUser: '当前用户',
     scopeSystem: '系统',
     methodPortable: '便携压缩包',
+    methodMsi: '官方 MSI',
+    methodLegacyPortable: '旧版并排副本',
+    methodStore: 'Microsoft Store',
+    methodChocolatey: 'Chocolatey',
+    methodScoop: 'Scoop',
     methodWinget: 'winget',
     methodAuto: '自动',
     methodExisting: '已有安装',
     installedNone: '没有找到 PowerShell 7。可以在这里安装当前用户副本，或自行安装 PowerShell 7。',
     routePlugin: '插件托管',
     routeSystem: '系统默认',
+    routePwsh5: '强制pwsh5',
     routePluginHint: '优先使用插件托管的副本或 DSH_PWSH_PATH，其次是本机已安装的 PowerShell 7。',
     routeSystemHint: '只使用系统范围的 PowerShell 7。本机没有安装时，pwsh 工具会回退到 Windows PowerShell 5.1。',
+    routePwsh5Hint: '强制 pwsh 工具使用 Windows PowerShell 5.1。此路由生效期间，全部 PowerShell 7 提示词注入和方言提示都会关闭。',
     routeSystemPath: '系统默认目前解析到 {path}。',
     routeSystemMissing: '没有找到系统范围的 PowerShell 7，pwsh 工具将回退到 Windows PowerShell 5.1。',
+    legacySystemHint: '当前可执行文件是旧版插件解压到系统目录的带版本号副本。升级会用官方 MSI 替换主安装并删除这个多余副本；Windows Terminal 启动的正是主安装。',
     routeSaving: '正在切换路由…',
     routeSaved: '已切换到{mode}。',
     actionInstall: '为当前用户安装',
@@ -476,6 +502,7 @@
     'line-height:18px;cursor:pointer}',
     '.pwsh7_chip[data-state=common]{color:var(--dsw-alias-state-business-primary);border-color:var(--dsw-alias-state-business-primary)}',
     '.pwsh7_chip[data-state=force]{color:var(--dsw-alias-state-success-primary);border-color:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_chip[data-state=pwsh5]{color:var(--dsw-alias-state-warning-primary,#d29922);border-color:var(--dsw-alias-state-warning-primary,#d29922)}',
     '.pwsh7_chip:hover{filter:brightness(1.08)}',
     '.pwsh7_chip:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}',
     '.pwsh7_menu{position:absolute;bottom:calc(100% + 8px);left:0;z-index:50;width:224px;padding:4px;',
@@ -485,10 +512,12 @@
     'background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;text-align:left;cursor:pointer}',
     '.pwsh7_menuItem:hover{background:var(--dsw-alias-bg-layer-2)}',
     '.pwsh7_menuItem[data-selected=true]{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2)}',
+    '.pwsh7_menuSep{height:1px;margin:4px 6px;background:var(--dsw-alias-border-l2)}',
     '.pwsh7_menuLabel{flex:1;min-width:0}',
     '.pwsh7_dot{width:6px;height:6px;border-radius:999px;flex:none;background:var(--dsw-alias-state-idle-primary)}',
     '.pwsh7_dot[data-state=common]{background:var(--dsw-alias-state-business-primary)}',
     '.pwsh7_dot[data-state=force]{background:var(--dsw-alias-state-success-primary)}',
+    '.pwsh7_dot[data-state=pwsh5]{background:var(--dsw-alias-state-warning-primary,#d29922)}',
     '.pwsh7_check{flex:none;font-size:11px;color:var(--dsw-alias-state-success-primary)}',
     '.pwsh7_dockError{font-size:11px;color:var(--dsw-alias-state-error-primary);max-width:220px;overflow-wrap:anywhere}',
     '.pwsh7_menuConfirm{margin:6px 8px 4px;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}',
@@ -627,12 +656,20 @@
     if (raw === null || typeof raw !== 'object') return null;
     var install = raw.install !== null && typeof raw.install === 'object' ? raw.install : null;
     var elevation = raw.elevation !== null && typeof raw.elevation === 'object' ? raw.elevation : null;
+    var route = raw.route === 'pwsh5' ? 'pwsh5' : (raw.route === 'system' ? 'system' : 'plugin');
+    var pwsh5 = route === 'pwsh5';
     return {
       raw: raw,
       pluginVersion: textOrNull(raw.pluginVersion),
-      found: install !== null && typeof install.exists === 'boolean' ? install.exists : raw.found === true,
-      version: install !== null ? textOrNull(install.version) : textOrNull(raw.version),
-      path: install !== null ? textOrNull(install.path) : textOrNull(raw.path),
+      found: pwsh5
+        ? raw.found === true
+        : (install !== null && typeof install.exists === 'boolean' ? install.exists : raw.found === true),
+      version: pwsh5
+        ? textOrNull(raw.version)
+        : (install !== null ? textOrNull(install.version) : textOrNull(raw.version)),
+      path: pwsh5
+        ? textOrNull(raw.path)
+        : (install !== null ? textOrNull(install.path) : textOrNull(raw.path)),
       directory: install !== null ? textOrNull(install.directory) : null,
       scope: install !== null && (install.scope === 'user' || install.scope === 'system') ? install.scope : null,
       method: install !== null ? textOrNull(install.method) : null,
@@ -640,9 +677,14 @@
       removable: install !== null && install.removable === true,
       userCopy: install !== null && install.userCopy === true,
       systemCopy: install !== null && install.systemCopy === true,
+      systemExe: install !== null ? textOrNull(install.systemExe) : null,
+      legacySystemPaths: install !== null && Array.isArray(install.legacySystemPaths)
+        ? install.legacySystemPaths.filter(function (entry) { return typeof entry === 'string'; })
+        : [],
       pathEntry: install !== null && install.pathEntry === true,
       configPath: textOrNull(raw.configPath),
-      route: raw.route === 'system' ? 'system' : 'plugin',
+      route: route,
+      routePrevious: raw.routePrevious === 'system' ? 'system' : 'plugin',
       routeConfigured: raw.routeConfigured === true,
       dialect: (function (rawDialect) {
         var source = rawDialect !== null && typeof rawDialect === 'object' ? rawDialect : {};
@@ -1226,7 +1268,8 @@
       // Compact confirmation: version, executable, scope and source — the facts the user asked to
       // see — plus the latest-release row when an update exists.
       var detectedSource = host.source === 'env' ? t('sourceEnv')
-        : host.source === 'config' ? t('sourceConfig') : t('sourceDetected');
+        : host.source === 'config' ? t('sourceConfig')
+          : host.source === 'pwsh5' ? t('sourcePwsh5') : t('sourceDetected');
       var installInfo = host.install !== null && typeof host.install === 'object' ? host.install : {};
       var detectedScope = installInfo.scope === 'system' ? t('scopeSystem') : t('scopeUser');
       var detectedPath = typeof host.path === 'string' && host.path.length > 0
@@ -1244,7 +1287,11 @@
           React.createElement('span', { className: 'pwsh7_infoValue' }, value)
         );
       };
-      body.push(React.createElement('p', { key: 'ready', className: 'pwsh7_text' }, t('detectedTitle')));
+      body.push(React.createElement(
+        'p',
+        { key: 'ready', className: 'pwsh7_text' },
+        host.route === 'pwsh5' ? t('detectedTitlePwsh5') : t('detectedTitle')
+      ));
       body.push(React.createElement(
         'div',
         { key: 'info', className: 'pwsh7_info' },
@@ -1270,6 +1317,9 @@
       }
       if (installInfo.scope !== 'system') {
         body.push(React.createElement('p', { key: 'system-hint', className: 'pwsh7_hint' }, t('systemRemovalHint')));
+      }
+      if (Array.isArray(host.legacySystemPaths) && host.legacySystemPaths.length > 0) {
+        body.push(React.createElement('p', { key: 'legacy-hint', className: 'pwsh7_hint' }, t('legacySystemHint')));
       }
     } else if (failed) {
       body.push(React.createElement(
@@ -1944,6 +1994,11 @@
 
     function methodLabel(method) {
       if (method === 'portable') return t('methodPortable');
+      if (method === 'msi') return t('methodMsi');
+      if (method === 'legacy-portable') return t('methodLegacyPortable');
+      if (method === 'store') return t('methodStore');
+      if (method === 'chocolatey') return t('methodChocolatey');
+      if (method === 'scoop') return t('methodScoop');
       if (method === 'winget') return t('methodWinget');
       if (method === 'auto') return t('methodAuto');
       if (method === 'existing') return t('methodExisting');
@@ -2114,6 +2169,9 @@
       installRows.push(row('directory', t('labelDirectory'), host.directory === null ? t('unknown') : host.directory, true));
       installRows.push(row('scope', t('labelScope'), scopeLabel(host.scope)));
       installRows.push(row('method', t('labelMethod'), methodLabel(host.method)));
+      if (host.systemExe !== null) {
+        installRows.push(row('system-exe', t('labelSystemInstall'), host.systemExe, true));
+      }
       installRows.push(row('latest', t('labelLatest'), host.latest.version === null ? t('unknown') : host.latest.version));
     } else {
       installRows.push(React.createElement('p', { key: 'missing', className: 'pwsh7_empty' }, t('installedNone')));
@@ -2135,7 +2193,10 @@
       'section',
       { key: 'install', className: 'pwsh7_card' },
       React.createElement('h3', { key: 'title', className: 'pwsh7_cardTitle' }, t('sectionInstall')),
-      React.createElement('div', { key: 'rows', className: 'pwsh7_rows' }, installRows)
+      React.createElement('div', { key: 'rows', className: 'pwsh7_rows' }, installRows),
+      host.legacySystemPaths.length > 0
+        ? React.createElement('p', { key: 'legacy-hint', className: 'pwsh7_actionHint' }, t('legacySystemHint'))
+        : null
     );
 
     // Routing --------------------------------------------------------------------
@@ -2147,12 +2208,15 @@
         'div',
         { key: 'seg', className: 'pwsh7_seg', role: 'group', 'aria-label': t('sectionRoute') },
         routeButton('plugin', t('routePlugin'), host.route === 'plugin', busy),
-        routeButton('system', t('routeSystem'), host.route === 'system', busy)
+        routeButton('system', t('routeSystem'), host.route === 'system', busy),
+        routeButton('pwsh5', t('routePwsh5'), host.route === 'pwsh5', busy)
       ),
       React.createElement(
         'p',
         { key: 'hint', className: 'pwsh7_actionHint' },
-        host.route === 'system' ? t('routeSystemHint') : t('routePluginHint')
+        host.route === 'system'
+          ? t('routeSystemHint')
+          : host.route === 'pwsh5' ? t('routePwsh5Hint') : t('routePluginHint')
       ),
       host.route === 'system'
         ? React.createElement(
@@ -2521,7 +2585,12 @@
       if (next === null || typeof next !== 'object') return;
       var dialect = next.dialect !== null && typeof next.dialect === 'object' ? next.dialect : {};
       var common = dialect.common === true;
-      setState({ common: common, force: common && dialect.force === true });
+      setState({
+        common: common,
+        force: common && dialect.force === true,
+        route: next.route === 'pwsh5' ? 'pwsh5' : (next.route === 'system' ? 'system' : 'plugin'),
+        routePrevious: next.routePrevious === 'system' ? 'system' : 'plugin'
+      });
     }
 
     function refresh() {
@@ -2539,6 +2608,7 @@
 
     function levelOf(value) {
       if (value === null) return 'off';
+      if (value.route === 'pwsh5') return 'pwsh5';
       return value.force === true ? 'force' : value.common === true ? 'common' : 'off';
     }
 
@@ -2552,26 +2622,51 @@
         return;
       }
       setError(null);
-      setPending(nextLevel === 'force'
+      if (nextLevel === 'pwsh5') {
+        setPending({ level: 'pwsh5', route: 'pwsh5' });
+        return;
+      }
+      var dialectValue = nextLevel === 'force'
         ? { common: true, force: true }
-        : nextLevel === 'common' ? { common: true, force: false } : { common: false, force: false });
+        : nextLevel === 'common' ? { common: true, force: false } : { common: false, force: false };
+      setPending({
+        level: nextLevel,
+        dialect: dialectValue,
+        // Leaving the forced pwsh5 mode restores the route the user had before it.
+        route: state.route === 'pwsh5' ? (state.routePrevious || 'plugin') : undefined
+      });
     }
 
-    function applyChoice() {
-      if (pending === null || busy) return;
-      setBusy(true);
-      onlineFetch(ROUTE_DIALECT, {
+    function post(url, body) {
+      return onlineFetch(url, {
         method: 'POST',
         credentials: 'omit',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(pending)
+        body: JSON.stringify(body || {})
       }).then(function (response) {
         return response.json().then(function (data) {
           if (!response.ok) throw new Error(data && data.error ? data.error : 'HTTP ' + response.status);
           return data;
         });
-      }).then(function (data) {
-        if (data && data.state) adopt(data.state);
+      });
+    }
+
+    function applyChoice() {
+      if (pending === null || busy) return;
+      var choice = pending;
+      setBusy(true);
+      var work = Promise.resolve();
+      if (typeof choice.route === 'string' && choice.route !== state.route) {
+        work = post(ROUTE_ROUTE, { mode: choice.route }).then(function (data) {
+          if (data && data.state) adopt(data.state);
+        });
+      }
+      work.then(function () {
+        if (choice.dialect === undefined) return null;
+        return post(ROUTE_DIALECT, choice.dialect).then(function (data) {
+          if (data && data.state) adopt(data.state);
+        });
+      }).then(function () {
         setPending(null);
         setOpen(false);
       }).catch(function (failure) {
@@ -2622,8 +2717,13 @@
 
     if (state === null) return null;
 
-    var labels = { off: t('levelOff'), common: t('levelCommon'), force: t('levelForce') };
-    var menuItems = ['off', 'common', 'force'].map(function (level) {
+    var labels = {
+      off: t('levelOff'),
+      common: t('levelCommon'),
+      force: t('levelForce'),
+      pwsh5: t('levelPwsh5')
+    };
+    function menuItem(level) {
       return React.createElement(
         'button',
         {
@@ -2642,11 +2742,19 @@
           ? React.createElement('span', { className: 'pwsh7_check', 'aria-hidden': 'true' }, '✓')
           : null
       );
-    });
+    }
+    var menuItems = ['off', 'common', 'force'].map(menuItem);
+    // A separator makes clear that pwsh5 is a routing switch, not another prompt level.
+    menuItems.push(React.createElement('div', { key: 'sep', className: 'pwsh7_menuSep', 'aria-hidden': 'true' }));
+    menuItems.push(menuItem('pwsh5'));
     var menuContent = pending === null
       ? menuItems
       : [
-        React.createElement('p', { key: 'confirm', className: 'pwsh7_menuConfirm' }, t('switchConfirm')),
+        React.createElement(
+          'p',
+          { key: 'confirm', className: 'pwsh7_menuConfirm' },
+          pending.route === 'pwsh5' ? t('switchToPwsh5Confirm') : t('switchConfirm')
+        ),
         React.createElement(
           'div',
           { key: 'actions', className: 'pwsh7_menuActions' },
@@ -2679,14 +2787,14 @@
             'data-state': currentLevel,
             'aria-haspopup': 'menu',
             'aria-expanded': open === true ? 'true' : 'false',
-            title: t('promptToggle'),
+            title: state.route === 'pwsh5' ? t('routePwsh5Hint') : t('promptToggle'),
             onClick: function () {
               setOpen(open !== true);
               setPending(null);
               setError(null);
             }
           },
-          'pwsh7'
+          state.route === 'pwsh5' ? 'pwsh5' : 'pwsh7'
         ),
         error !== null
           ? React.createElement('span', { className: 'pwsh7_dockError' }, interpolate(t('saveFailed'), { error: error }))

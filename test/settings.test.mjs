@@ -108,7 +108,7 @@ test('effectiveRoute defaults missing/unknown configs to plugin', () => {
   assert.equal(effectiveRoute({ route: 'bogus' }), 'plugin');
   assert.equal(effectiveRoute({ route: 'system' }), 'system');
   assert.equal(effectiveRoute({ route: 'plugin' }), 'plugin');
-  assert.deepEqual([...ROUTE_MODES], ['plugin', 'system']);
+  assert.deepEqual([...ROUTE_MODES], ['plugin', 'system', 'pwsh5']);
 });
 
 test('writeRouteConfig is additive and routeInfo reports configured state', (t) => {
@@ -291,8 +291,9 @@ test('describeInstall reports the plugin-managed per-user copy as removable', (t
 
   const install = describeInstall({ env, root, state });
   assert.deepEqual(Object.keys(install).sort(), [
-    'directory', 'exists', 'managed', 'method', 'path', 'pathEntry',
-    'removable', 'scope', 'systemCopy', 'userCopy', 'version',
+    'directory', 'exists', 'legacySystem', 'legacySystemPaths', 'managed', 'method', 'path',
+    'pathEntry', 'removable', 'scope', 'systemCopy', 'systemExe', 'systemVersionedPaths',
+    'userCopy', 'version',
   ]);
   assert.equal(install.exists, true);
   assert.equal(install.managed, true);
@@ -345,8 +346,9 @@ test('the state snapshot exposes the v0.3.0 fields', async (t) => {
   assert.equal(typeof snapshot.systemPath, 'string');
   assert.ok(snapshot.systemPath.length > 0);
   assert.deepEqual(Object.keys(snapshot.install).sort(), [
-    'directory', 'exists', 'managed', 'method', 'path', 'pathEntry',
-    'removable', 'scope', 'systemCopy', 'userCopy', 'version',
+    'directory', 'exists', 'legacySystem', 'legacySystemPaths', 'managed', 'method', 'path',
+    'pathEntry', 'removable', 'scope', 'systemCopy', 'systemExe', 'systemVersionedPaths',
+    'userCopy', 'version',
   ]);
   assert.equal(snapshot.install.exists, false);
   assert.deepEqual(snapshot.elevation, { available: false, requiredForSystem: true });

@@ -15,6 +15,7 @@ import {
   WINGET_PWSH_ID,
   selectPwsh7Asset,
   parsePwsh7ZipName,
+  parsePwsh7MsiName,
   detectSingleTopLevelDirectory,
   verifyArchiveMagic,
   downloadFile,
@@ -27,6 +28,7 @@ import {
   looksLikeElevationRequired,
   manualInstallInstructions,
   resolvePwsh7Release,
+  resolvePwsh7MsiRelease,
   ensurePwsh,
   installPowerShell7,
   throwIfAborted,
@@ -55,6 +57,9 @@ function makeEnv(base) {
     USERPROFILE: W.join(base, 'user'),
     ProgramFiles: W.join(base, 'Program Files'),
     'ProgramFiles(x86)': W.join(base, 'Program Files (x86)'),
+    ProgramData: W.join(base, 'ProgramData'),
+    SystemRoot: W.join(base, 'Windows'),
+    PROCESSOR_ARCHITECTURE: 'AMD64',
     PATH: W.join(base, 'bin'),
   };
 }
@@ -146,7 +151,9 @@ const PWSH_RELEASE_FIXTURE = {
 };
 
 const PWSH7_ZIP_URL = 'https://example.invalid/PowerShell-7.6.7-win-x64.zip';
+const PWSH7_MSI_URL = PWSH_RELEASE_FIXTURE.assets[0].browser_download_url;
 const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
+const MSI_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]);
 const FIVE_MB = 5 * 1024 * 1024;
 
 function fakeArchive(magic) {
@@ -167,7 +174,7 @@ test('parsePwsh7ZipName parses portable zip names', () => {
   assert.equal(parsePwsh7ZipName(''), undefined);
 });
 
-test('selectPwsh7Asset picks the win-x64 portable zip from a release', () => {
+test('selectPwsh7Asset picks the win-x64 portable zip or the official MSI', () => {
   const asset = selectPwsh7Asset(PWSH_RELEASE_FIXTURE);
   assert.ok(asset);
   assert.equal(asset.tag, 'v7.6.7');
@@ -175,9 +182,28 @@ test('selectPwsh7Asset picks the win-x64 portable zip from a release', () => {
   assert.equal(asset.name, 'PowerShell-7.6.7-win-x64.zip');
   assert.equal(asset.url, PWSH7_ZIP_URL);
   assert.equal(asset.size, 106364316);
+  assert.equal(asset.kind, 'zip');
   assert.equal(selectPwsh7Asset({ tag_name: 'v7.6.7', assets: [] }), undefined);
   assert.equal(selectPwsh7Asset(null), undefined);
   assert.equal(selectPwsh7Asset({ assets: [{ name: 'PowerShell-7.6.7-win-x64.msi' }] }), undefined);
+
+  const msi = selectPwsh7Asset(PWSH_RELEASE_FIXTURE, 'msi');
+  assert.ok(msi);
+  assert.equal(msi.name, 'PowerShell-7.6.7-win-x64.msi');
+  assert.equal(msi.version, '7.6.7');
+  assert.equal(msi.url, PWSH7_MSI_URL);
+  assert.equal(msi.kind, 'msi');
+  assert.deepEqual(parsePwsh7MsiName('PowerShell-7.6.9-win-x64.msi'), { version: '7.6.9' });
+  assert.equal(parsePwsh7MsiName('PowerShell-7.6.9-win-x64.zip'), undefined);
+  assert.throws(() => selectPwsh7Asset(PWSH_RELEASE_FIXTURE, 'exe'), TypeError);
+});
+
+test('resolvePwsh7MsiRelease selects the official MSI asset', async () => {
+  const fetchImpl = async () => jsonResponse(PWSH_RELEASE_FIXTURE);
+  const asset = await resolvePwsh7MsiRelease({ fetchImpl });
+  assert.equal(asset.kind, 'msi');
+  assert.equal(asset.name, 'PowerShell-7.6.7-win-x64.msi');
+  assert.equal(asset.url, PWSH7_MSI_URL);
 });
 
 // ---------------------------------------------------------------------------
@@ -197,15 +223,19 @@ test('detectSingleTopLevelDirectory detects wrapper dirs and flat layouts', () =
   assert.equal(detectSingleTopLevelDirectory(['']), undefined);
 });
 
-test('verifyArchiveMagic accepts a valid zip header and rejects garbage', (t) => {
+test('verifyArchiveMagic accepts valid zip/MSI headers and rejects garbage', (t) => {
   const base = makeTemp(t);
   const zip = W.join(base, 'a.zip');
+  const msi = W.join(base, 'a.msi');
   const bad = W.join(base, 'c.bin');
   fs.writeFileSync(zip, Buffer.concat([ZIP_MAGIC, Buffer.from('payload')]));
+  fs.writeFileSync(msi, Buffer.concat([MSI_MAGIC, Buffer.from('payload')]));
   fs.writeFileSync(bad, Buffer.from('GIF89a'));
 
   assert.equal(verifyArchiveMagic(zip, 'zip'), undefined);
+  assert.equal(verifyArchiveMagic(msi, 'msi'), undefined);
   assert.throws(() => verifyArchiveMagic(bad, 'zip'), /unexpected signature/);
+  assert.throws(() => verifyArchiveMagic(zip, 'msi'), /unexpected signature/);
   assert.throws(() => verifyArchiveMagic(zip, 'rar'), /unknown archive kind/);
   assert.throws(() => verifyArchiveMagic(W.join(base, 'missing.zip'), 'zip'));
 });
@@ -760,45 +790,14 @@ test(
   },
 );
 
-for (const scope of ['user', 'system']) {
-  test(`${scope} portable install writes the matching PATH before recording success`, async (t) => {
-    const base = makeTemp(t);
-    const env = makeEnv(base);
-    const root = W.join(base, 'router');
-    let updated;
-    const result = await installPowerShell7({
-      env, root, scope, force: true, method: 'portable',
-      requireAdministrator: async () => {},
-      updatePath: async (executable, options) => { updated = { executable, scope: options.scope }; },
-      fetchImpl: async (url) => url === PWSH_API_LATEST
-        ? jsonResponse(PWSH_RELEASE_FIXTURE) : streamedResponse(fakeArchive(ZIP_MAGIC)),
-      tarPath: REAL_TAR,
-      extractImpl: fakeExtractForPowerShell([]),
-      probePwsh: async () => ({ ok: true, version: '7.6.7' }),
-    });
-    assert.equal(result.ok, true, result.message);
-    assert.equal(result.scope, scope);
-    assert.deepEqual(updated, { executable: result.path, scope });
-    assert.equal(readRouterConfig(env).installed.pwsh.scope, scope);
-    if (scope === 'system') assert.equal(result.path, W.join(env.ProgramFiles, 'PowerShell', '7', '7.6.7', 'pwsh.exe'));
-  });
-}
-
-test('an unelevated system install stages and publishes through the elevation helper', async (t) => {
+test('a user portable install writes the matching PATH before recording success', async (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);
   const root = W.join(base, 'router');
-  let published;
-  let pathUpdates = 0;
+  let updated;
   const result = await installPowerShell7({
-    env, root, scope: 'system', force: true, method: 'portable',
-    isElevated: async () => false,
-    elevatePublish: async ({ from, to, pathDir }) => {
-      published = { from, to, pathDir };
-      fs.cpSync(from, to, { recursive: true, force: true });
-      return { ok: true };
-    },
-    updatePath: async () => { pathUpdates += 1; },
+    env, root, scope: 'user', force: true, method: 'portable',
+    updatePath: async (executable, options) => { updated = { executable, scope: options.scope }; },
     fetchImpl: async (url) => url === PWSH_API_LATEST
       ? jsonResponse(PWSH_RELEASE_FIXTURE) : streamedResponse(fakeArchive(ZIP_MAGIC)),
     tarPath: REAL_TAR,
@@ -806,36 +805,351 @@ test('an unelevated system install stages and publishes through the elevation he
     probePwsh: async () => ({ ok: true, version: '7.6.7' }),
   });
   assert.equal(result.ok, true, result.message);
-  assert.ok(published, 'the elevated helper was asked to publish');
-  assert.equal(published.to, W.join(env.ProgramFiles, 'PowerShell', '7', '7.6.7'));
-  assert.equal(published.pathDir, published.to);
-  assert.equal(pathUpdates, 0, 'PATH is updated by the elevated helper, not twice');
-  assert.equal(result.path, W.join(published.to, 'pwsh.exe'));
-  assert.equal(readRouterConfig(env).installed.pwsh.scope, 'system');
-  const leftover = fs.readdirSync(W.join(root, 'tmp')).filter((name) => name.startsWith('staging-'));
-  assert.deepEqual(leftover, [], 'the staging directory is removed');
+  assert.equal(result.scope, 'user');
+  assert.deepEqual(updated, { executable: result.path, scope: 'user' });
+  assert.equal(readRouterConfig(env).installed.pwsh.scope, 'user');
+});
+
+function planFor(strategy, targetDirectory, extra = {}) {
+  return async () => ({
+    plan: {
+      strategy,
+      targetDirectory,
+      allUsers: true,
+      cleanupLegacy: true,
+      ...extra,
+    },
+    main: {
+      path: W.join(targetDirectory, 'pwsh.exe'),
+      directory: targetDirectory,
+      kind: strategy === 'msi' ? 'msi' : 'portable',
+      scope: 'system',
+    },
+  });
+}
+
+test('a system upgrade runs the official MSI against the canonical installation and cleans legacy copies', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const root = W.join(base, 'router');
+  const systemDir = W.join(env.ProgramFiles, 'PowerShell', '7');
+  const canonical = W.join(systemDir, 'pwsh.exe');
+  const legacyDir = W.join(systemDir, '7.6.9');
+  writeFile(canonical, 'fake 7.6.6');
+  writeFile(W.join(legacyDir, 'pwsh.exe'), 'fake 7.6.9');
+
+  let published;
+  let upgraded = false;
+  const result = await installPowerShell7({
+    env, root, scope: 'system', method: 'auto', force: true,
+    resolvePlan: planFor('msi', systemDir),
+    isElevated: async () => false,
+    runSystemInstall: async (payload) => {
+      published = payload;
+      upgraded = true;
+      return { ok: true, cleaned: [legacyDir], warnings: [], pathUpdated: true, restartRequired: false };
+    },
+    fetchImpl: async (url) => {
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_RELEASE_FIXTURE);
+      if (url === PWSH7_MSI_URL) return streamedResponse(fakeArchive(MSI_MAGIC));
+      throw new Error(`unexpected URL ${url}`);
+    },
+    probePwsh: async (exe) => {
+      if (W.normalize(exe) === W.normalize(canonical)) {
+        return { ok: true, version: upgraded ? '7.6.7' : '7.6.6' };
+      }
+      return { ok: true, version: '7.6.9' };
+    },
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.scope, 'system');
+  assert.equal(result.method, 'msi');
+  assert.equal(result.path, W.normalize(canonical));
+  assert.equal(result.version, '7.6.7');
+  assert.deepEqual(result.cleaned, [legacyDir]);
+  assert.ok(published, 'the MSI helper was asked to install');
+  assert.equal(published.msiPath.toLowerCase().endsWith('.msi'), true);
+  assert.equal(published.systemDir, W.normalize(systemDir));
+  assert.deepEqual(published.legacyDirectories, [W.normalize(legacyDir)]);
+  assert.equal(published.expectedVersion, '7.6.7');
+  assert.equal(published.isElevated, false);
+
+  const config = readRouterConfig(env);
+  assert.equal(config.pwshPath, W.normalize(canonical));
+  assert.equal(config.installed.pwsh.scope, 'system');
+  assert.equal(config.installed.pwsh.method, 'msi');
+  const leftovers = fs.existsSync(W.join(root, 'tmp')) ? fs.readdirSync(W.join(root, 'tmp')) : [];
+  assert.deepEqual(leftovers, [], 'the downloaded MSI is removed');
+});
+
+test('an outdated canonical install is upgraded even when a newer side-by-side copy exists', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const systemDir = W.join(env.ProgramFiles, 'PowerShell', '7');
+  const canonical = W.join(systemDir, 'pwsh.exe');
+  const legacyExe = W.join(systemDir, '7.6.9', 'pwsh.exe');
+  writeFile(canonical, 'fake 7.6.6');
+  writeFile(legacyExe, 'fake 7.6.9');
+
+  let installed = false;
+  let called = 0;
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', method: 'auto',
+    resolvePlan: planFor('msi', systemDir),
+    isElevated: async () => false,
+    runSystemInstall: async () => {
+      called += 1;
+      installed = true;
+      return { ok: true, cleaned: [], warnings: [], pathUpdated: true };
+    },
+    fetchImpl: async (url) => {
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_RELEASE_FIXTURE);
+      if (url === PWSH7_MSI_URL) return streamedResponse(fakeArchive(MSI_MAGIC));
+      throw new Error(`unexpected URL ${url}`);
+    },
+    probePwsh: async (exe) => {
+      if (W.normalize(exe) === W.normalize(canonical)) {
+        return { ok: true, version: installed ? '7.6.7' : '7.6.6' };
+      }
+      // The side-by-side 7.6.9 is newer than the canonical 7.6.6: it must not suppress the upgrade.
+      return { ok: true, version: '7.6.9' };
+    },
+  });
+
+  assert.equal(called, 1, 'the canonical install must be upgraded');
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.path, W.normalize(canonical));
+  assert.equal(result.version, '7.6.7');
+});
+
+test('a canonical install already at the target version is reused without a download', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const systemDir = W.join(env.ProgramFiles, 'PowerShell', '7');
+  const canonical = W.join(systemDir, 'pwsh.exe');
+  writeFile(canonical, 'fake 7.6.7');
+  let msiDownloads = 0;
+
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', method: 'auto',
+    resolvePlan: planFor('msi', systemDir),
+    runSystemInstall: async () => {
+      throw new Error('the MSI must not run when the canonical install is current');
+    },
+    fetchImpl: async (url) => {
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_RELEASE_FIXTURE);
+      msiDownloads += 1;
+      throw new Error(`the MSI must not download (${url})`);
+    },
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.method, 'existing');
+  assert.equal(result.path, W.normalize(canonical));
+  assert.equal(msiDownloads, 0);
+  assert.equal(readRouterConfig(env).pwshPath, W.normalize(canonical));
 });
 
 test('a cancelled UAC prompt fails the system install without writing config', async (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);
   const result = await installPowerShell7({
-    env, root: W.join(base, 'router'), scope: 'system', force: true, method: 'portable',
+    env, root: W.join(base, 'router'), scope: 'system', force: true, method: 'auto',
+    resolvePlan: planFor('msi', W.join(env.ProgramFiles, 'PowerShell', '7')),
     isElevated: async () => false,
-    elevatePublish: async () => ({
+    runSystemInstall: async () => ({
       ok: false,
       cancelled: true,
       error: 'administrator approval was cancelled; approve the Windows UAC prompt and retry',
     }),
-    fetchImpl: async (url) => url === PWSH_API_LATEST
-      ? jsonResponse(PWSH_RELEASE_FIXTURE) : streamedResponse(fakeArchive(ZIP_MAGIC)),
-    tarPath: REAL_TAR,
-    extractImpl: fakeExtractForPowerShell([]),
-    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+    fetchImpl: async (url) => {
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_RELEASE_FIXTURE);
+      if (url === PWSH7_MSI_URL) return streamedResponse(fakeArchive(MSI_MAGIC));
+      throw new Error(`unexpected URL ${url}`);
+    },
+    probePwsh: async () => ({ ok: false }),
   });
   assert.equal(result.ok, false);
   assert.match(result.message, /approval was cancelled/);
+  assert.equal(result.requiresElevation, true);
   assert.equal(readRouterConfig(env), undefined);
+});
+
+test('a manual ZIP installation is upgraded in place and keeps its PATH directory', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const root = W.join(base, 'router');
+  const targetDir = W.join(env.LOCALAPPDATA, 'ManualPwsh');
+  const targetExe = W.join(targetDir, 'pwsh.exe');
+  writeFile(targetExe, 'old');
+
+  const result = await installPowerShell7({
+    env, root, scope: 'system', method: 'auto', force: true,
+    resolvePlan: async () => ({
+      plan: { strategy: 'zip-in-place', targetDirectory: targetDir, scope: 'user', pathSource: 'path' },
+      main: { kind: 'portable', scope: 'user', path: targetExe, directory: targetDir },
+    }),
+    fetchImpl: async (url) => url === PWSH_API_LATEST
+      ? jsonResponse(PWSH_RELEASE_FIXTURE)
+      : streamedResponse(fakeArchive(ZIP_MAGIC)),
+    tarPath: REAL_TAR,
+    extractImpl: async (_tar, _archive, destination) => {
+      fs.mkdirSync(destination, { recursive: true });
+      fs.writeFileSync(W.join(destination, 'pwsh.exe'), 'new', 'utf8');
+    },
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+    isElevated: async () => false,
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.method, 'portable');
+  assert.equal(result.path, W.normalize(targetExe));
+  assert.equal(fs.readFileSync(targetExe, 'utf8'), 'new');
+  assert.equal(readRouterConfig(env).installed.pwsh.scope, 'user');
+});
+
+test('a Chocolatey-managed install is upgraded through choco', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const chocoDir = W.join(env.ProgramData, 'chocolatey', 'bin');
+  writeFile(W.join(chocoDir, 'choco.exe'));
+  const shim = W.join(chocoDir, 'pwsh.exe');
+  writeFile(shim);
+  let captured;
+
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', method: 'auto', force: true,
+    resolvePlan: async () => ({
+      plan: { strategy: 'chocolatey', targetDirectory: chocoDir, scope: 'system' },
+      main: { kind: 'chocolatey', scope: 'system', path: shim, directory: chocoDir },
+    }),
+    isElevated: async () => false,
+    runPackageCommand: async (payload) => {
+      captured = payload;
+      return { ok: true, output: 'choco upgraded' };
+    },
+    fetchImpl: async () => jsonResponse(PWSH_RELEASE_FIXTURE),
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.method, 'chocolatey');
+  assert.equal(W.basename(captured.file), 'choco.exe');
+  assert.deepEqual(captured.args.slice(0, 2), ['upgrade', 'powershell-core']);
+  assert.equal(readRouterConfig(env).installed.pwsh.method, 'chocolatey');
+});
+
+test('a Scoop-managed install is upgraded through scoop', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const scoopShim = W.join(env.USERPROFILE, 'scoop', 'shims', 'scoop.cmd');
+  writeFile(scoopShim);
+  const pwshShim = W.join(env.USERPROFILE, 'scoop', 'shims', 'pwsh.exe');
+  writeFile(pwshShim);
+  let captured;
+
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', method: 'auto', force: true,
+    resolvePlan: async () => ({
+      plan: { strategy: 'scoop', targetDirectory: W.dirname(pwshShim), scope: 'user', global: false },
+      main: { kind: 'scoop', scope: 'user', path: pwshShim, directory: W.dirname(pwshShim) },
+    }),
+    runPackageCommand: async (payload) => {
+      captured = payload;
+      return { ok: true, output: 'scoop updated' };
+    },
+    fetchImpl: async () => jsonResponse(PWSH_RELEASE_FIXTURE),
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.method, 'scoop');
+  assert.equal(captured.file.toLowerCase().endsWith('cmd.exe'), true);
+  assert.match(captured.args.join(' '), /scoop\.cmd.+update pwsh/i);
+  assert.equal(readRouterConfig(env).installed.pwsh.method, 'scoop');
+});
+
+test('a Microsoft Store install is upgraded through winget msstore', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const windowsApps = W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps');
+  const alias = W.join(windowsApps, 'pwsh.exe');
+  const winget = W.join(windowsApps, 'winget.exe');
+  writeFile(alias);
+  writeFile(winget);
+  let captured;
+
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', method: 'auto', force: true,
+    resolvePlan: async () => ({
+      plan: { strategy: 'store', targetDirectory: windowsApps, scope: 'user' },
+      main: { kind: 'store', scope: 'user', path: alias, directory: windowsApps },
+    }),
+    runPackageCommand: async (payload) => {
+      captured = payload;
+      return { ok: true, output: 'winget upgraded' };
+    },
+    fetchImpl: async () => jsonResponse(PWSH_RELEASE_FIXTURE),
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.method, 'store');
+  assert.equal(W.basename(captured.file), 'winget.exe');
+  assert.ok(captured.args.includes('msstore'));
+  assert.ok(captured.args.includes('upgrade'));
+});
+
+test('an explicit override is refused instead of overwritten', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', method: 'auto', force: true,
+    resolvePlan: async () => ({
+      plan: { strategy: 'refuse', reason: 'the pwsh tool is pinned to C:\\Custom\\pwsh.exe by DSH_PWSH_PATH' },
+      main: { kind: 'portable', explicit: true, scope: 'user', path: 'C:\\Custom\\pwsh.exe', directory: 'C:\\Custom' },
+    }),
+    fetchImpl: async () => {
+      throw new Error('must not download for an explicit override');
+    },
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.message, /pinned|DSH_PWSH_PATH/);
+  assert.equal(readRouterConfig(env), undefined);
+});
+
+test('a per-user MSI product is upgraded in place with ALLUSERS=0', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const perUserDir = W.join(env.LOCALAPPDATA, 'Programs', 'PowerShell', '7');
+  writeFile(W.join(perUserDir, 'pwsh.exe'));
+  let published;
+
+  const result = await installPowerShell7({
+    env, root: W.join(base, 'router'), scope: 'system', method: 'auto', force: true,
+    resolvePlan: async () => ({
+      plan: { strategy: 'msi', targetDirectory: perUserDir, allUsers: false, scope: 'user' },
+      main: { kind: 'msi', scope: 'user', path: W.join(perUserDir, 'pwsh.exe'), directory: perUserDir },
+    }),
+    isElevated: async () => false,
+    runSystemInstall: async (payload) => {
+      published = payload;
+      return { ok: true, cleaned: [], warnings: [], pathUpdated: true };
+    },
+    fetchImpl: async (url) => {
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_RELEASE_FIXTURE);
+      if (url === PWSH7_MSI_URL) return streamedResponse(fakeArchive(MSI_MAGIC));
+      throw new Error(`unexpected URL ${url}`);
+    },
+    probePwsh: async () => ({ ok: true, version: '7.6.7' }),
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.scope, 'user');
+  assert.equal(published.allUsers, false);
+  assert.equal(readRouterConfig(env).installed.pwsh.scope, 'user');
 });
 
 test('PATH failure does not report success or trigger a winget fallback', async (t) => {

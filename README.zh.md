@@ -46,7 +46,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 通过 DSH 插件管理器从 npm 安装：
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.3.3
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.4.0
 ```
 
 或从本地目录安装（目录安装会链接源码，便于开发）：
@@ -67,7 +67,7 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 | `diagnose` | 在**当前沙箱策略**下真实运行 PowerShell 7 命令（版本 + 工作区写入），输出退出码、stdout/stderr、拒绝/runner 失败判定与具体修复建议。 |
 | `install`、`relocate` | **工具不会执行安装。** 只返回引导：安装只能由用户在安装弹窗、设置 → PowerShell 7 或手动安装中发起。 |
 | `selfcheck` | 运行与设置页相同的只读自检，返回 `ok` / `warn` / `fail`。 |
-| `route` | 持久化 `route: "plugin"` 或 `route: "system"`，并返回新路由。 |
+| `route` | 持久化 `route: "plugin"`、`route: "system"` 或 `route: "pwsh5"`，并返回新路由。`pwsh5` 强制 Windows PowerShell 5.1，并关闭全部 PowerShell 7 提示词层。 |
 | `uninstall` | 删除插件自装的用户级便携安装（文件、临时目录、托管 PATH 条目），保留路由偏好。 |
 
 ### 设置页（Web）
@@ -76,15 +76,19 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 - **状态**：当前 PowerShell 7 版本与可执行文件、安装目录、配置文件路径、安装范围与方式、插件版本，
   以及该安装是否由插件管理、能否卸载。
-- **路由**：一键在“插件管理的 PowerShell 7”和“系统默认”之间切换。系统默认只解析系统级安装
-  （`Program Files`、用户 `Programs` 目录、Store 别名、插件目录以外的 `PATH` 条目），
-  找不到系统 PowerShell 7 时按 DSH 原生行为回退到 Windows PowerShell 5.1。选择写入
-  `config.json` 的 `route`，下一条 `pwsh` 命令生效。
+- **路由**：可在“插件管理的 PowerShell 7”“系统默认”和“PowerShell 5.1”之间切换。系统默认只解析
+  系统级安装（`Program Files`、用户 `Programs` 目录、Store 别名、插件目录以外的 `PATH` 条目），
+  找不到系统 PowerShell 7 时按 DSH 原生行为回退到 Windows PowerShell 5.1；`PowerShell 5.1`
+  路由直接强制该可执行文件，并关闭全部 PowerShell 7 提示词层。选择写入 `config.json` 的
+  `route`，下一条 `pwsh` 命令生效。
 - **自检**：检查可执行文件解析、PowerShell 主版本、路由、配置有效性、安装/范围一致性、持久 PATH
   条目、`@deepseek-ai/*` 加载、沙箱策略、是否有安装任务在运行，并以 `ok` / `warn` / `fail` 显示详情。
 - **安装/修复**：启动与安装弹窗相同的共享安装任务（用户级），显示实时进度。
-- **迁移到系统**：在 `Program Files` 安装 PowerShell 7 并写入系统 PATH（需要管理员），随后删除用户级
-  副本并把路由指向系统可执行文件；未提权时给出明确提示，不会卡在 UAC。
+- **迁移到系统 / 系统级升级**：运行官方 PowerShell 7 MSI，原地升级
+  `%ProgramFiles%\PowerShell\7\pwsh.exe`——这正是 Windows Terminal 和其他启动器解析的主安装。
+  未提权时只弹一次 UAC，任务显示 `waiting for administrator approval (UAC)`。MSI 安装并验证新版本后，
+  同一个提权会话会删除旧版插件留下的 `…\PowerShell\7\<version>` 并排副本及其系统 PATH 条目，
+  然后删除用户级副本、更新路由。
 - **卸载**：仅对插件自装的用户级便携安装可用；删除已安装版本与临时目录、移除托管的 `PATH` 条目，
   不会触碰系统或其他包管理器管理的安装。
 
@@ -129,6 +133,7 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 |---|---|
 | `plugin`（默认） | `DSH_PWSH_PATH` → `config.pwshPath` → 常见安装位置（含插件托管的便携安装）→ `PATH`；缺失时抛出安装提示。 |
 | `system` | 只解析系统级位置：`Program Files`、`Program Files (x86)`、`%LOCALAPPDATA%\Programs`、Store 别名、`%LOCALAPPDATA%\dsh\pwsh7` 以外的 `PATH` 条目，最后按原生行为回退到 Windows PowerShell 5.1；忽略 `DSH_PWSH_PATH` 与 `config.pwshPath`。 |
+| `pwsh5` | 始终使用 `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`（Windows PowerShell 5.1）。关闭全部 PowerShell 7 提示词/方言层，但保留用户已存的提示词级别，离开该路由后恢复。 |
 
 设置页可在运行时切换路由（`POST /pwsh7/route`），无需重启。
 
@@ -161,32 +166,65 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 可在 Web 弹窗选择 `scope: "user"`（默认）或 `scope: "system"`。
 
-| 范围 | 安装位置 | 持久 PATH |
-|---|---|---|
-| `user` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | 当前用户（`HKCU\Environment`） |
-| `system` | `%ProgramFiles%\PowerShell\7` | 系统（`HKLM` 环境变量） |
+| 范围 | 方式 | 安装位置 | 持久 PATH |
+|---|---|---|---|
+| `user` | 便携 ZIP | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | 当前用户（`HKCU\Environment`） |
+| `system` | **官方 MSI，原地升级** | `%ProgramFiles%\PowerShell\7\pwsh.exe`（主安装，不再创建 `<version>` 子目录） | 系统；由官方安装器维护，并确保主目录排在前面 |
 
-系统安装需要先以管理员身份启动 DSH；权限不足会在下载前报错。用户安装无需提权。两种方式都会保留已有 PATH 及注册表值类型、避免重复添加、刷新宿主进程 PATH，并广播 Windows 环境变量变更。已打开的终端可能需要重新启动。PATH 写入失败会明确报错，不会显示安装成功。
+系统级安装/升级运行官方 `PowerShell-<version>-win-x64.msi`，原地升级
+`…\PowerShell\7\pwsh.exe`，因此 Windows Terminal、Win+R 等启动器都能看到新版本，而不只是 DSH 的
+`pwsh` 工具。未提权的 DSH 只弹一次 UAC（`Start-Process -Verb RunAs`），任务显示
+`waiting for administrator approval (UAC)`。提权脚本先读取主 `pwsh.exe` 的文件版本；只有确认已是目标版本，
+才删除旧版插件留下的 `…\PowerShell\7\<version>` 并排副本及其系统 PATH 条目。如果 Windows 把文件替换
+安排到重启后，脚本会保留并排副本和 PATH，任务会明确提示需要重启/关闭终端。
 
-设置页可以把已有用户级安装一步迁移到系统级（`POST /pwsh7/relocate`）：安装/复用 Program Files
-副本、写入系统 PATH、删除用户级副本，并把配置指向系统可执行文件。
+用户级安装无需提权，并保留既有 PATH 行为（保留值类型、避免重复、刷新宿主进程 PATH、广播 Windows
+环境变量变更）。系统级升级后，已打开的终端可能需要重新启动。
+
+设置页可以把已有用户级安装一步迁移到系统级（`POST /pwsh7/relocate`）：运行系统 MSI（若主安装已是
+最新则直接复用）、删除用户级副本，并把配置指向主系统可执行文件。
 
 没有 Web GUI 时，请自行安装 PowerShell 7（官方 MSI/Store/release zip），并把 `DSH_PWSH_PATH`
 或 `config.json` 指向其 `pwsh.exe`。
 
-便携包来源：
+下载来源：
 
-| 组件 | 来源 | 安装位置 |
+| 范围 | 资源 | 安装位置 |
 |---|---|---|
-| PowerShell 7 | GitHub `PowerShell/PowerShell` 最新 release 的 `PowerShell-*-win-x64.zip` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>\` |
+| `user` | `PowerShell-<version>-win-x64.zip` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>\` |
+| `system` | `PowerShell-<version>-win-x64.msi` | `%ProgramFiles%\PowerShell\7\pwsh.exe`（原地） |
 
-- HTTPS 流式下载到 `%LOCALAPPDATA%\dsh\pwsh7\tmp`，支持进度回调与取消。
-- 解包使用 Windows 自带 `tar.exe`（bsdtar）；不会执行任何下载来的安装器。
-- 解包后先真实运行一次新 `pwsh.exe` 验证主版本 >= 7，再写入 `config.json`。
-- `auto` 失败回退 `winget install Microsoft.PowerShell`；需要 UAC 提升时返回明确的手动命令，
-  不会卡在提权提示上。
+- HTTPS 流式下载到 `%LOCALAPPDATA%\dsh\pwsh7\tmp`，支持进度回调与取消。ZIP 校验 ZIP magic，
+  MSI 校验 OLE/Windows Installer magic。
+- 用户级用 Windows 自带 `tar.exe`（bsdtar）解包，并先真实运行一次新 `pwsh.exe` 验证主版本 >= 7，
+  再写入 `config.json`。
+- 系统级执行官方 MSI：`msiexec /i … /qn /norestart ALLUSERS=1`，不会把 ZIP 解压到 Program Files。
+  安装后读取主 `pwsh.exe` 的文件版本进行校验，再清理旧并排副本。
+- `auto` 只在用户级回退 `winget install Microsoft.PowerShell`；系统级失败时返回明确的手动
+  MSI/winget 命令，不会悄悄改装用户级副本。
 - winget 使用对应的 `--scope user` 或 `--scope machine`，回退不会改变安装范围。
 - 已在本机实测：下载 106,364,316 字节（约 31s），解压后 244.8 MB，验证为 `7.6.7`。
+
+### 升级已有安装（不假设安装方式）
+
+系统侧升级不再假设 PowerShell 7 是 MSI 安装的。它会从**持久化的机器 PATH + 用户 PATH** 中找出
+新终端实际解析到的 `pwsh.exe`，判断它属于哪种安装，再交给对应的机制升级：
+
+| 原安装方式 | 识别方式 | 升级机制 |
+|---|---|---|
+| 机器级官方 MSI | HKLM 卸载注册表项 `PowerShell 7-x64` | `msiexec /i … ALLUSERS=1` 原地升级，弹一次 UAC |
+| 当前用户 MSI | HKCU 卸载注册表项 | `msiexec /i … ALLUSERS=0` 原地升级（无需提权） |
+| 手动/便携 ZIP 且在 PATH 中 | 目录里有 `pwsh.exe`，但没有 MSI/Store/包管理器标记 | 原地替换该目录：旧目录改名 → 复制新文件 → 校验文件版本 → 删除旧目录；失败自动回滚。PATH 条目不变 |
+| Chocolatey | `…\chocolatey\bin\pwsh.exe` shim | `choco upgrade powershell-core -y`（需要时提权） |
+| Scoop | `…\scoop\shims\pwsh.exe` shim | `scoop update pwsh`（全局安装用 `-g`，需要时提权） |
+| Microsoft Store | `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` | `winget upgrade --id Microsoft.PowerShell --source msstore`；没有 winget 时明确提示去商店更新 |
+| 插件托管的用户级副本 | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | 下载最新 ZIP 到新版本目录，并把配置指向新目录 |
+| 旧版插件留下的系统并排副本 | `%ProgramFiles%\PowerShell\7\<version>` | 升级主 MSI，然后删除带版本号的副本及其 PATH 条目 |
+| `DSH_PWSH_PATH` / 行配置 `pwshPath` 覆盖 | 显式覆盖优先 | **拒绝覆盖**并说明原因；请用该副本自己的安装器升级，或移除覆盖 |
+| 未知/未安装 | 没有检测到 | 安装官方 MSI 到 Program Files |
+
+同一套检测也支持 `win-arm64`、`win-x86` 资源，按操作系统架构选择。包管理器缺失或升级失败时，
+不会悄悄改装一个额外的用户级副本，而是返回具体的恢复命令。
 
 ## 沙箱
 
@@ -216,9 +254,11 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 | `client.js` | 浏览器半边：`shell.overlay` 安装弹窗 + `settings.section` 的 PowerShell 7 设置页、SSE + 轮询、安装/路由/卸载/迁移/自检操作、中英文案 |
 | `lib/shipped.mjs` | 从运行中的 DSH 安装（Electron `app.asar`）加载 `@deepseek-ai/*` 包 |
 | `lib/paths.mjs` | PowerShell 7 路径探测、版本探测、`config.json` 读写 |
-| `lib/route.mjs` | 路由模式持久化、系统默认可执行文件解析、安装信息描述 |
-| `lib/install.mjs` | 用户/系统级便携安装（官方 zip）+ 同范围 winget 回退；进度与阶段回调 |
-| `lib/install-scope.mjs` | 注册表 PATH 写入/移除（保留值类型）、提权探测、Program Files 范围 |
+| `lib/route.mjs` | 路由模式（plugin/system/pwsh5）持久化、系统默认可执行文件与 pwsh5 解析、安装信息与旧并排副本描述 |
+| `lib/install-plan.mjs` | 从持久 PATH + 注册表识别 MSI/便携/Store/Chocolatey/Scoop/插件安装，并选择升级策略 |
+| `lib/install.mjs` | 用户级便携安装（官方 zip）、系统级 MSI/便携原地替换/包管理器升级、旧并排副本清理、winget 回退；进度与阶段回调 |
+| `lib/install-scope.mjs` | 注册表 PATH 写入/移除（保留值类型）、提权探测、Program Files 范围、系统目录旧版本副本枚举 |
+| `lib/elevate.mjs` | 一次性 UAC 助手：系统 MSI 升级、验证主安装、清理旧并排副本与 PATH |
 | `lib/state.mjs` | 进程内解析缓存（executor 与工具共用）；缺失运行信号 |
 | `lib/maintenance.mjs` | 删除插件自装的用户级安装（文件、临时目录、托管的 PATH 条目） |
 | `lib/selfcheck.mjs` | 只读自检：可执行文件、版本、路由、配置、安装、PATH、内置包、沙箱、任务、路由表 |

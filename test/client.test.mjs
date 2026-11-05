@@ -26,11 +26,14 @@ const SELFCHECK_IDS = [
 const SETTINGS_KEYS = [
   'settingsNav', 'settingsTitle', 'settingsSubtitle', 'loading', 'loadFailed', 'notInstalled',
   'statusReady', 'statusReadyNoVersion', 'sectionInstall', 'sectionRoute', 'sectionActions',
-  'labelPsVersion', 'labelPath', 'labelDirectory', 'labelScope', 'labelMethod', 'labelConfig',
-  'labelManaged', 'labelRemovable', 'labelUserCopy', 'labelSystemCopy', 'labelPathEntry',
-  'yes', 'no', 'unknown', 'scopeUser', 'scopeSystem', 'methodPortable', 'methodWinget',
-  'methodAuto', 'methodExisting', 'installedNone', 'routePlugin', 'routeSystem', 'routePluginHint',
-  'routeSystemHint', 'routeSystemPath', 'routeSystemMissing', 'routeSaving', 'routeSaved',
+  'labelPsVersion', 'labelSystemInstall', 'labelPath', 'labelDirectory', 'labelScope', 'labelMethod',
+  'labelConfig', 'labelManaged', 'labelRemovable', 'labelUserCopy', 'labelSystemCopy',
+  'labelPathEntry', 'yes', 'no', 'unknown', 'scopeUser', 'scopeSystem', 'methodPortable',
+  'methodWinget', 'methodAuto', 'methodExisting', 'methodMsi', 'methodLegacyPortable',
+  'methodStore', 'methodChocolatey', 'methodScoop',
+  'installedNone', 'routePlugin', 'routeSystem',
+  'routePwsh5', 'routePluginHint', 'routeSystemHint', 'routePwsh5Hint', 'routeSystemPath',
+  'routeSystemMissing', 'routeSaving', 'routeSaved', 'legacySystemHint',
   'actionInstall', 'actionInstallHint', 'actionRelocate', 'actionRelocateHint', 'relocateConfirm',
   'relocateConfirmButton', 'relocateStarted', 'relocateDone', 'relocateDoneNoPath',
   'relocateRemoved', 'relocateFailed', 'actionUninstall', 'actionUninstallHint',
@@ -577,46 +580,53 @@ test('the setup dialog offers the prompt guidance when the host reports it', () 
   assert.equal(boxes[1].props.disabled, true);
 });
 
-test('the composer chip colours the pwsh7 word per level', () => {
+test('the composer chip colours the pwsh7 word per level and turns yellow for pwsh5', () => {
   const cases = [
-    [{ common: false, force: false }, 'off'],
-    [{ common: true, force: false }, 'common'],
-    [{ common: true, force: true }, 'force'],
+    [{ common: false, force: false, route: 'plugin' }, 'off', 'pwsh7'],
+    [{ common: true, force: false, route: 'plugin' }, 'common', 'pwsh7'],
+    [{ common: true, force: true, route: 'plugin' }, 'force', 'pwsh7'],
+    [{ common: false, force: false, route: 'pwsh5' }, 'pwsh5', 'pwsh5'],
   ];
-  for (const [dialect, level] of cases) {
-    const booted = boot(new Map([[0, dialect]]));
+  for (const [state, level, label] of cases) {
+    const booted = boot(new Map([[0, state]]));
     const tree = renderSlot(booted, 'conversation.input.right');
     const chip = findNode(tree, (node) => node.props !== undefined && node.props.className === 'pwsh7_chip');
     assert.equal(chip.length, 1);
-    assert.equal(textOf(chip[0]), 'pwsh7');
+    assert.equal(textOf(chip[0]), label);
     assert.equal(chip[0].props['data-state'], level);
     assert.equal(chip[0].props['aria-haspopup'], 'menu');
     // The chip mounts alone; it must ship its own stylesheet or it renders as a native button.
     const styles = findNode(tree, (node) => node.type === 'style');
     assert.ok(styles.length >= 1, 'the dock carries its stylesheet');
     assert.ok(styles[0].props.dangerouslySetInnerHTML.__html.includes('.pwsh7_chip'));
+    assert.ok(styles[0].props.dangerouslySetInnerHTML.__html.includes('[data-state=pwsh5]'));
   }
 });
 
-test('clicking the chip opens a menu with the three levels', () => {
-  const booted = boot(new Map([[0, { common: true, force: true }], [4, true]]));
+test('clicking the chip opens a menu with the prompt levels and the pwsh5 route', () => {
+  const booted = boot(new Map([[0, { common: true, force: true, route: 'plugin' }], [4, true]]));
   const tree = renderSlot(booted, 'conversation.input.right');
   const items = findNode(tree, (node) => node.props !== undefined && node.props.role === 'menuitemradio');
-  assert.equal(items.length, 3);
-  assert.deepEqual(items.map((item) => textOf(item).trim().replace(/\s*✓$/, '')), ['Off', 'Common', 'Force']);
+  assert.equal(items.length, 4);
+  assert.deepEqual(
+    items.map((item) => textOf(item).trim().replace(/\s*✓$/, '')),
+    ['Off', 'Common', 'Force', 'Force pwsh5'],
+  );
   assert.equal(items[2].props['data-selected'], 'true');
   assert.equal(items[0].props['data-selected'], 'false');
   assert.ok(textOf(items[2]).includes('✓'), 'the selected row is checked');
   const dots = findNode(tree, (node) => node.props !== undefined && node.props.className === 'pwsh7_dot');
-  assert.deepEqual(dots.map((dot) => dot.props['data-state']), ['off', 'common', 'force']);
+  assert.deepEqual(dots.map((dot) => dot.props['data-state']), ['off', 'common', 'force', 'pwsh5']);
+  const separators = findNode(tree, (node) => node.props !== undefined && node.props.className === 'pwsh7_menuSep');
+  assert.equal(separators.length, 1, 'pwsh5 is separated from the prompt levels');
 });
 
 test('changing the level asks for confirmation before posting it', async () => {
   const calls = [];
   const booted = boot(new Map([
-    [0, { common: true, force: true }],
+    [0, { common: true, force: true, route: 'plugin' }],
     [4, true],
-    [1, { common: false, force: false }],
+    [1, { level: 'off', dialect: { common: false, force: false } }],
   ]), {
     fetch: (url, options) => {
       calls.push({ url: String(url), body: options && options.body });
@@ -636,6 +646,64 @@ test('changing the level asks for confirmation before posting it', async () => {
   const post = calls.find((call) => call.url.endsWith('/pwsh7/dialect'));
   assert.ok(post, 'the dialect route received the change');
   assert.deepEqual(JSON.parse(post.body), { common: false, force: false });
+});
+
+test('the chip forces the pwsh5 route and explains that prompts are disabled', async () => {
+  const calls = [];
+  const booted = boot(new Map([
+    [0, { common: true, force: true, route: 'plugin' }],
+    [4, true],
+    [1, { level: 'pwsh5', route: 'pwsh5' }],
+  ]), {
+    fetch: (url, options) => {
+      calls.push({ url: String(url), body: options && options.body });
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, state: { route: 'pwsh5', dialect: { common: false, force: false } } }),
+      });
+    },
+  });
+  const tree = renderSlot(booted, 'conversation.input.right');
+  assert.ok(textOf(tree).includes('Force the pwsh tool to Windows PowerShell 5.1'), 'pwsh5 confirmation copy');
+  assert.ok(textOf(tree).includes('All PowerShell 7 prompt guidance and dialect hints are disabled'), 'warning');
+  const buttons = findNode(tree, (node) => node.props !== undefined && node.props.type === 'button');
+  const confirm = buttons.find((button) => textOf(button) === 'Switch');
+  assert.ok(confirm);
+  confirm.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const routePost = calls.find((call) => call.url.endsWith('/pwsh7/route'));
+  assert.ok(routePost, 'the route endpoint received pwsh5');
+  assert.deepEqual(JSON.parse(routePost.body), { mode: 'pwsh5' });
+  assert.equal(calls.some((call) => call.url.endsWith('/pwsh7/dialect')), false);
+});
+
+test('leaving pwsh5 restores the previous route and the chosen prompt level', async () => {
+  const calls = [];
+  const booted = boot(new Map([
+    [0, { common: false, force: false, route: 'pwsh5', routePrevious: 'system' }],
+    [4, true],
+    [1, { level: 'common', dialect: { common: true, force: false }, route: 'system' }],
+  ]), {
+    fetch: (url, options) => {
+      calls.push({ url: String(url), body: options && options.body });
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ ok: true, state: { route: 'system', dialect: { common: true, force: false } } }),
+      });
+    },
+  });
+  const tree = renderSlot(booted, 'conversation.input.right');
+  const buttons = findNode(tree, (node) => node.props !== undefined && node.props.type === 'button');
+  const confirm = buttons.find((button) => textOf(button) === 'Switch');
+  assert.ok(confirm);
+  confirm.props.onClick();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const routePost = calls.find((call) => call.url.endsWith('/pwsh7/route'));
+  assert.ok(routePost);
+  assert.deepEqual(JSON.parse(routePost.body), { mode: 'system' });
+  const dialectPost = calls.find((call) => call.url.endsWith('/pwsh7/dialect'));
+  assert.ok(dialectPost);
+  assert.deepEqual(JSON.parse(dialectPost.body), { common: true, force: false });
 });
 
 // ---------------------------------------------------------------------------
@@ -685,6 +753,9 @@ function makeState(patch = {}, installPatch = {}, elevationPatch = {}) {
     directory: PWSH_DIRECTORY,
     userCopy: true,
     systemCopy: false,
+    systemExe: null,
+    legacySystemPaths: [],
+    legacySystem: false,
     pathEntry: true,
   }, installPatch);
   return Object.assign({
@@ -709,6 +780,7 @@ function makeState(patch = {}, installPatch = {}, elevationPatch = {}) {
     missingSeq: 3,
     releasesUrl: 'https://example.test',
     route: 'plugin',
+    routePrevious: 'plugin',
     routeConfigured: true,
     systemPath: null,
     busy: false,
@@ -742,10 +814,13 @@ test('the settings page renders installation details, flags and the route contro
 
   const pluginRoute = findByAction(tree, 'route-plugin');
   const systemRoute = findByAction(tree, 'route-system');
+  const pwsh5Route = findByAction(tree, 'route-pwsh5');
   assert.equal(pluginRoute.length, 1);
   assert.equal(systemRoute.length, 1);
+  assert.equal(pwsh5Route.length, 1);
   assert.equal(pluginRoute[0].props['data-on'], 'true');
   assert.equal(systemRoute[0].props['data-on'], 'false');
+  assert.equal(pwsh5Route[0].props['data-on'], 'false');
   assert.ok(text.includes('Prefers the plugin-managed copy'), 'plugin-route hint');
 
   // Installation details are rendered as rows, not as one blob.
@@ -762,6 +837,34 @@ test('the settings page explains the system-default fallback and its resolved pa
 
   const missing = renderSettings(new Map([[0, makeState({ route: 'system', systemPath: null })]]));
   assert.ok(textOf(missing).includes('No system-wide PowerShell 7 was found'));
+});
+
+test('the settings page exposes the forced pwsh5 route', () => {
+  const tree = renderSettings(new Map([[0, makeState({
+    route: 'pwsh5',
+    routePrevious: 'system',
+    found: true,
+    path: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    version: '5.1',
+  })]]));
+  const text = textOf(tree);
+  assert.equal(findByAction(tree, 'route-pwsh5')[0].props['data-on'], 'true');
+  assert.ok(text.includes('All PowerShell 7 prompt guidance and dialect hints are off'), 'pwsh5 hint');
+});
+
+test('the settings page shows the canonical system install and warns about a legacy side-by-side copy', () => {
+  const systemExe = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
+  const legacy = 'C:\\Program Files\\PowerShell\\7\\7.6.9\\pwsh.exe';
+  const tree = renderSettings(new Map([[0, makeState({}, {
+    systemCopy: true,
+    systemExe,
+    legacySystemPaths: [legacy],
+    legacySystem: true,
+  })]]));
+  const text = textOf(tree);
+  assert.ok(text.includes(systemExe), 'canonical system executable');
+  assert.ok(text.includes('versioned copy'), 'legacy copy warning');
+  assert.ok(text.includes('Windows Terminal'), 'explains what the system install affects');
 });
 
 test('the maintenance card has one Update action and offers a system-level upgrade for user installs', async () => {
