@@ -507,7 +507,10 @@ test('POST /pwsh7/latest compares the newest release with the installed executab
   assert.equal(payload.latest.version, '7.7.0');
   assert.equal(payload.latest.current, '7.6.7');
   assert.equal(payload.latest.updateAvailable, true);
+  assert.match(payload.latest.msiUrl, /PowerShell-7\.7\.0-win-x64\.msi$/);
+  assert.match(payload.latest.zipUrl, /PowerShell-7\.7\.0-win-x64\.zip$/);
   assert.equal(payload.state.latest.updateAvailable, true);
+  assert.match(payload.state.latest.msiUrl, /PowerShell-7\.7\.0-win-x64\.msi$/);
   // The probe fills the version that `describeInstall` cannot infer without a versioned directory.
   assert.equal(payload.state.install.version, '7.6.7');
 

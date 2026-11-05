@@ -30,7 +30,7 @@ const SETTINGS_KEYS = [
   'labelConfig', 'labelManaged', 'labelRemovable', 'labelUserCopy', 'labelSystemCopy',
   'labelPathEntry', 'yes', 'no', 'unknown', 'scopeUser', 'scopeSystem', 'methodPortable',
   'methodWinget', 'methodAuto', 'methodExisting', 'methodMsi', 'methodLegacyPortable',
-  'methodStore', 'methodChocolatey', 'methodScoop',
+  'methodStore', 'methodChocolatey', 'methodScoop', 'manualMsi', 'manualZip', 'manualUpgradeMsi',
   'installedNone', 'routePlugin', 'routeSystem',
   'routePwsh5', 'routePluginHint', 'routeSystemHint', 'routePwsh5Hint', 'routeSystemPath',
   'routeSystemMissing', 'routeSaving', 'routeSaved', 'legacySystemHint',
@@ -531,6 +531,61 @@ test('the setup dialog confirms an already-detected PowerShell 7 and offers the 
   assert.ok(buttons.some((button) => textOf(button).includes('Done')), 'confirm button');
 });
 
+test('an installed PowerShell 7 opens the first-run dialog without claiming it is missing', () => {
+  const tree = renderDialog({
+    found: true,
+    phase: 'idle',
+    missingSeq: 0,
+    path: PWSH_PATH,
+    version: '7.6.7',
+    source: 'config',
+    install: { scope: 'system', method: 'msi' },
+    onboarding: { completed: false },
+    latest: {
+      version: '7.6.9',
+      current: '7.6.7',
+      updateAvailable: true,
+      checkedAt: 1,
+      error: null,
+      msiUrl: 'https://example.test/PowerShell-7.6.9-win-x64.msi',
+      zipUrl: 'https://example.test/PowerShell-7.6.9-win-x64.zip',
+    },
+    dialect: {
+      common: false,
+      force: false,
+      sizes: { commonChars: 1000, commonTokens: 250, forcedChars: 1200, forcedTokens: 300 },
+    },
+  });
+  const text = textOf(tree);
+  assert.ok(text.includes('PowerShell 7 setup'), 'ready title');
+  assert.ok(text.includes('PowerShell 7 is installed. Confirm the setup choices below.'), 'ready lead');
+  assert.ok(!text.includes('PowerShell 7 was not found on this machine.'), 'must not claim it is missing');
+  assert.ok(text.includes('Manual MSI upgrade'), 'manual MSI upgrade link');
+  const links = findNode(tree, (node) => node.type === 'a' && typeof node.props.href === 'string');
+  assert.ok(links.some((link) => link.props.href.endsWith('.msi')));
+});
+
+test('the first-run install defaults to the system MSI and offers manual MSI/ZIP links', () => {
+  const tree = renderDialog({
+    found: false,
+    phase: 'idle',
+    installRoot: 'C:\\root',
+    releasesUrl: 'https://example.test/releases/latest',
+    latest: {
+      version: '7.6.9',
+      msiUrl: 'https://example.test/PowerShell-7.6.9-win-x64.msi',
+      zipUrl: 'https://example.test/PowerShell-7.6.9-win-x64.zip',
+    },
+  });
+  const selects = findNode(tree, (node) => node.type === 'select');
+  assert.equal(selects.length, 1);
+  assert.equal(selects[0].props.value, 'system', 'the first-run install defaults to system/MSI');
+  const links = findNode(tree, (node) => node.type === 'a' && typeof node.props.href === 'string');
+  assert.ok(links.some((link) => link.props.href.endsWith('.msi')), 'manual MSI link');
+  assert.ok(links.some((link) => link.props.href.endsWith('.zip')), 'manual ZIP link');
+  assert.ok(textOf(tree).includes('Manual MSI download'));
+});
+
 test('a user-folder install offers the system option and the update paths', () => {
   const tree = renderDialog({
     found: true,
@@ -916,8 +971,22 @@ test('the settings page only offers uninstall when the install is removable', ()
   assert.equal(findByAction(notRemovable, 'relocate').length, 1);
 });
 
-test('a missing PowerShell makes the settings page offer a user-scope install', () => {
-  const state = makeState({ found: false, path: null, version: null, busy: false }, {
+test('a missing PowerShell makes the settings page offer install plus manual MSI/ZIP links', () => {
+  const state = makeState({
+    found: false,
+    path: null,
+    version: null,
+    busy: false,
+    latest: {
+      version: '7.6.9',
+      current: null,
+      updateAvailable: null,
+      checkedAt: 1,
+      error: null,
+      msiUrl: 'https://example.test/PowerShell-7.6.9-win-x64.msi',
+      zipUrl: 'https://example.test/PowerShell-7.6.9-win-x64.zip',
+    },
+  }, {
     exists: false, managed: false, removable: false, scope: null, method: null,
     version: null, path: null, directory: null, userCopy: false, systemCopy: false, pathEntry: false,
   });
@@ -928,6 +997,29 @@ test('a missing PowerShell makes the settings page offer a user-scope install', 
   assert.equal(findByAction(tree, 'uninstall').length, 0);
   assert.equal(findByAction(tree, 'relocate').length, 0);
   assert.ok(text.includes('Not found'), 'missing status badge');
+  assert.ok(text.includes('Manual MSI download'), 'manual MSI download');
+  assert.ok(text.includes('Portable ZIP'), 'manual ZIP download');
+  const links = findNode(tree, (node) => node.type === 'a' && typeof node.props.href === 'string');
+  assert.ok(links.some((link) => link.props.href.endsWith('.msi')));
+});
+
+test('an available update in Settings offers a manual MSI upgrade link', () => {
+  const state = makeState({
+    latest: {
+      version: '7.7.0',
+      current: '7.6.7',
+      updateAvailable: true,
+      checkedAt: 1,
+      error: null,
+      msiUrl: 'https://example.test/PowerShell-7.7.0-win-x64.msi',
+      zipUrl: 'https://example.test/PowerShell-7.7.0-win-x64.zip',
+    },
+  });
+  const tree = renderSettings(new Map([[0, state]]));
+  const text = textOf(tree);
+  assert.ok(text.includes('Manual MSI upgrade'));
+  const links = findNode(tree, (node) => node.type === 'a' && typeof node.props.href === 'string');
+  assert.ok(links.some((link) => link.props.href.endsWith('7.7.0-win-x64.msi')));
 });
 
 test('relocate and uninstall both require an inline confirmation', () => {

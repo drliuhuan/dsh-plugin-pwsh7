@@ -4,6 +4,34 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-11-05
+
+### Fixed
+
+- **The first-run dialog no longer claims PowerShell 7 is missing when it was found.** The
+  dialog's title and lead text were static; the first-run onboarding therefore always showed
+  “需要 PowerShell 7 / 没有找到 pwsh.exe”, even when the host had already resolved
+  `C:\Program Files\PowerShell\7\pwsh.exe`. They now follow `found`: an installed runtime shows
+  “PowerShell 7 设置 / 已检测到 PowerShell 7”, while the missing copy is used only when the host
+  really cannot resolve it.
+- **A negative detection is re-checked immediately.** The shared router state no longer caches a
+  `found: false` result for 10 seconds, so installing PowerShell 7 while DSH is running is visible
+  on the next state snapshot.
+- **Persisted PATH and 64-bit Program Files are also searched.** If `pwsh.exe` is in a custom
+  directory or a shim (Store/winget/Chocolatey/Scoop) that was added to the registry PATH after
+  DSH started, the detector now falls back to the persisted machine+user PATH. `ProgramW6432` is
+  checked as well, covering a 32-bit host on a 64-bit OS.
+- The Settings view prefers the executor's `found` result over a transient/empty install
+  description, so it cannot show “Not found” for a working runtime.
+
+### Added
+
+- **First-run download defaults to the official system-wide MSI.** The setup dialog preselects
+  the system scope; the current-user portable ZIP is still available.
+- **Manual download/upgrade options** in the first-run dialog and Settings: an MSI download /
+  MSI upgrade link (primary) plus the portable ZIP link. Until the latest-release check returns,
+  the links fall back to the official releases page.
+
 ## [0.4.0] - 2026-11-05
 
 ### Fixed
@@ -323,6 +351,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - 49 unit tests (48 pass, 1 network-gated skip).
 
 [0.3.3]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.2...v0.3.3
+[0.4.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.4...v0.4.0
 [0.3.2]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.0...v0.3.1

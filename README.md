@@ -169,17 +169,20 @@ and in the desktop shell without a second window:
   not reopen it. While `pwsh.exe` is still missing, it also reopens on every failed `pwsh` run
   (`missingSeq`); "Not now" hides it until the next failed run, and a page reload opens it again
   while PowerShell 7 is still missing.
-- **Detected state:** when PowerShell 7 is found the dialog shows a compact fact list — version,
-  executable, scope (System / Current user) and source — plus the prompt-guidance choices. `Done`
-  saves the guidance and the confirmation.
+- **Detected state:** when PowerShell 7 is found the dialog title and lead say
+  **“PowerShell 7 setup / PowerShell 7 is installed”**, never “not found”; it shows a compact fact
+  list — version, executable, scope (System / Current user) and source — plus the prompt-guidance
+  choices. `Done` saves the guidance and the confirmation.
 - **Updates:** the dialog asks `/pwsh7/latest` for the newest release and compares it with the
   installed executable. With a user-folder copy it offers **Update in user folder** and **Install
   system-wide** (elevated; removes the user copy and its PATH entry). With a system copy it offers
   **Update system-wide**. A failed check leaves the installed state untouched and only shows the
   error line. Settings → PowerShell 7 shows the same update actions later.
 - **What it does when missing:** `Download and install` starts the shared, user-initiated
-  installation job. The dialog shows `downloading → extracting → verifying`, transferred bytes,
-  total, and percent. `Cancel download` aborts it.
+  installation job. The scope defaults to **system (official MSI)**; the current-user option uses
+  the portable ZIP. The dialog shows `downloading → extracting → verifying`, transferred bytes,
+  total, and percent. `Cancel download` aborts it. Manual **MSI** and portable **ZIP** links are
+  shown next to the download and retry/failure states.
 - **Why one job:** the dialog and the settings page share one coordinator, so whichever surface the
   user starts an install from shows the same progress, and two installs cannot race on the same
   archive under `%LOCALAPPDATA%\dsh\pwsh7\tmp`. The model's `shell_router` tool never starts one.
@@ -249,7 +252,10 @@ The settings page switches the route at runtime (`POST /pwsh7/route`); no restar
 Installation is only started by the user, from the Web setup dialog or Settings → PowerShell 7,
 or by installing PowerShell 7 outside DSH. The model-facing tool never starts an install.
 
-Choose `scope: "user"` (default) or `scope: "system"` in the Web dialog.
+The first-run dialog defaults to `scope: "system"` and the official MSI; choose
+`scope: "user"` for the portable ZIP. Both the first-run dialog and Settings also expose manual
+**MSI** download/upgrade links (primary) and a portable ZIP link. Until the latest-release check
+returns, those links fall back to the official PowerShell releases page.
 
 | Scope | Method | Destination | Persistent PATH |
 |---|---|---|---|

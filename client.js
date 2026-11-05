@@ -51,12 +51,14 @@
 
   var EN = {
     title: 'PowerShell 7 is required',
+    titleReady: 'PowerShell 7 setup',
     lead: 'PowerShell 7 was not found on this machine.',
-    body: 'Install location: {path}. Choose a scope.',
+    leadReady: 'PowerShell 7 is installed. Confirm the setup choices below.',
+    body: 'Install location: {path}. The default system install runs the official MSI; choose the current-user option for a portable copy.',
     scopeLabel: 'Installation scope',
-    userScope: 'Current user (no administrator rights)',
-    systemScope: 'System (run DSH as administrator)',
-    hint: 'About 100 MB; extracted locally, no installer is run.',
+    userScope: 'Current user (portable ZIP, no administrator rights)',
+    systemScope: 'System (official MSI, one UAC prompt)',
+    hint: 'About 100 MB. The system install upgrades %ProgramFiles%\\PowerShell\\7 with the official MSI; the current-user option extracts the portable ZIP without elevation.',
     download: 'Download and install',
     later: 'Not now',
     cancel: 'Cancel download',
@@ -79,6 +81,9 @@
     progress: '{received} / {total} ({percent}%)',
     progressUnknown: 'Downloaded {received}',
     manual: 'Manual download',
+    manualMsi: 'Manual MSI download',
+    manualZip: 'Portable ZIP',
+    manualUpgradeMsi: 'Manual MSI upgrade',
     retryHint: 'If the download keeps failing, install PowerShell 7 from {url}, then try again.',
     pathLabel: 'Install location',
     detectedTitle: 'PowerShell 7 is ready',
@@ -220,12 +225,14 @@
 
   var ZH = {
     title: '需要 PowerShell 7',
+    titleReady: 'PowerShell 7 设置',
     lead: '这个部署会把 pwsh 工具交给 PowerShell 7 执行，但这台电脑上没有找到 pwsh.exe。',
-    body: '选择安装范围，安装后会写入对应的用户或系统 PATH。安装位置：{path}。',
+    leadReady: '已检测到 PowerShell 7。请在下方确认本次部署的设置。',
+    body: '安装位置：{path}。默认走官方 MSI 系统级安装；需要便携副本时可选当前用户。',
     scopeLabel: '安装范围',
-    userScope: '当前用户（无需管理员权限）',
-    systemScope: '系统（请以管理员身份运行 DSH）',
-    hint: '压缩包约 100 MB。解压使用 Windows 自带的 tar.exe，不会执行下载来的安装程序。',
+    userScope: '当前用户（便携 ZIP，无需管理员权限）',
+    systemScope: '系统（官方 MSI，会弹一次 UAC）',
+    hint: '约 100 MB。系统级安装用官方 MSI 原地升级 %ProgramFiles%\\PowerShell\\7；当前用户选项解压便携 ZIP，无需提权。',
     download: '下载并安装',
     later: '稍后',
     cancel: '取消下载',
@@ -248,6 +255,9 @@
     progress: '{received} / {total}（{percent}%）',
     progressUnknown: '已下载 {received}',
     manual: '手动下载',
+    manualMsi: '手动下载 MSI',
+    manualZip: '便携 ZIP',
+    manualUpgradeMsi: '手动升级 MSI',
     retryHint: '如果下载一直失败，请从 {url} 安装 PowerShell 7，然后重试。',
     pathLabel: '安装位置',
     detectedTitle: 'PowerShell 7 已就绪',
@@ -658,20 +668,23 @@
     var elevation = raw.elevation !== null && typeof raw.elevation === 'object' ? raw.elevation : null;
     var route = raw.route === 'pwsh5' ? 'pwsh5' : (raw.route === 'system' ? 'system' : 'plugin');
     var pwsh5 = route === 'pwsh5';
+    var installExists = install !== null && install.exists === true;
     return {
       raw: raw,
       pluginVersion: textOrNull(raw.pluginVersion),
-      found: pwsh5
-        ? raw.found === true
-        : (install !== null && typeof install.exists === 'boolean' ? install.exists : raw.found === true),
+      // `raw.found` is the executor's resolution truth. Do not let a transient/empty
+      // `describeInstall` result turn a working installation into "not found".
+      found: pwsh5 ? raw.found === true : (raw.found === true || installExists),
       version: pwsh5
         ? textOrNull(raw.version)
-        : (install !== null ? textOrNull(install.version) : textOrNull(raw.version)),
+        : (install !== null && textOrNull(install.version) ? textOrNull(install.version) : textOrNull(raw.version)),
       path: pwsh5
         ? textOrNull(raw.path)
-        : (install !== null ? textOrNull(install.path) : textOrNull(raw.path)),
+        : (install !== null && textOrNull(install.path) ? textOrNull(install.path) : textOrNull(raw.path)),
       directory: install !== null ? textOrNull(install.directory) : null,
-      scope: install !== null && (install.scope === 'user' || install.scope === 'system') ? install.scope : null,
+      scope: install !== null && (install.scope === 'user' || install.scope === 'system')
+        ? install.scope
+        : (raw.scope === 'user' || raw.scope === 'system' ? raw.scope : null),
       method: install !== null ? textOrNull(install.method) : null,
       managed: install !== null && install.managed === true,
       removable: install !== null && install.removable === true,
@@ -709,9 +722,12 @@
           current: textOrNull(source.current),
           updateAvailable: source.updateAvailable === true,
           checkedAt: typeof source.checkedAt === 'number' ? source.checkedAt : null,
-          error: textOrNull(source.error)
+          error: textOrNull(source.error),
+          msiUrl: textOrNull(source.msiUrl),
+          zipUrl: textOrNull(source.zipUrl)
         };
       })(raw.latest),
+      releasesUrl: textOrNull(raw.releasesUrl),
       source: textOrNull(raw.source),
       systemPath: textOrNull(raw.systemPath),
       elevationAvailable: elevation !== null && elevation.available === true,
@@ -826,7 +842,9 @@
     var localError = localErrorState[0];
     var setLocalError = localErrorState[1];
 
-    var scopeState = React.useState('user');
+    // First-run download defaults to the official system-wide MSI. The portable per-user copy is
+    // still available by changing the scope select to "Current user".
+    var scopeState = React.useState('system');
     var scope = scopeState[0];
     var setScope = scopeState[1];
 
@@ -1191,6 +1209,40 @@
     var total = typeof host.total === 'number' && host.total > 0 ? host.total : null;
     var received = typeof host.received === 'number' ? host.received : 0;
     var releasesUrl = typeof host.releasesUrl === 'string' ? host.releasesUrl : 'https://github.com/PowerShell/PowerShell/releases/latest';
+    var latestInfo = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
+    // Manual downloads default to the official MSI; the portable ZIP stays available as a second
+    // link. Until the latest-release check returns, the release page is the safe fallback.
+    var manualMsiUrl = typeof latestInfo.msiUrl === 'string' && latestInfo.msiUrl
+      ? latestInfo.msiUrl
+      : releasesUrl;
+    var manualZipUrl = typeof latestInfo.zipUrl === 'string' && latestInfo.zipUrl
+      ? latestInfo.zipUrl
+      : releasesUrl;
+    function manualLinkRow(key, msiLabel) {
+      return React.createElement(
+        'p',
+        { key: key, className: 'pwsh7_hint' },
+        React.createElement('a', {
+          className: 'pwsh7_link',
+          href: manualMsiUrl,
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        }, msiLabel),
+        ' · ',
+        React.createElement('a', {
+          className: 'pwsh7_link',
+          href: manualZipUrl,
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        }, t('manualZip'))
+      );
+    }
+    function manualLinks(key) {
+      return manualLinkRow(key, t('manualMsi'));
+    }
+    function manualUpgradeLinks(key) {
+      return manualLinkRow(key, t('manualUpgradeMsi'));
+    }
 
     // Status body ------------------------------------------------------------
     var body = [];
@@ -1275,7 +1327,6 @@
       var detectedPath = typeof host.path === 'string' && host.path.length > 0
         ? host.path
         : (typeof host.installRoot === 'string' ? host.installRoot : '');
-      var latestInfo = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
       var currentVersion = typeof latestInfo.current === 'string'
         ? latestInfo.current
         : (typeof host.version === 'string' ? host.version : '');
@@ -1308,6 +1359,7 @@
           { key: 'latest', className: 'pwsh7_hint' },
           interpolate(t('latestLine'), { latest: latestInfo.version, current: currentVersion })
         ));
+        body.push(manualUpgradeLinks('manual-upgrade'));
       } else if (latestInfo.error) {
         body.push(React.createElement(
           'p',
@@ -1346,36 +1398,19 @@
         )
       ));
       body.push(React.createElement('p', { key: 'retry-hint', className: 'pwsh7_hint' },
-        interpolate(t('retryHint'), { url: releasesUrl })));
-      body.push(React.createElement(
-        'p',
-        { key: 'manual', className: 'pwsh7_hint' },
-        React.createElement('a', {
-          className: 'pwsh7_link',
-          href: releasesUrl,
-          target: '_blank',
-          rel: 'noopener noreferrer'
-        }, t('manual'))
-      ));
+        interpolate(t('retryHint'), { url: manualMsiUrl })));
+      body.push(manualLinks('manual'));
     } else {
       if (cancelled) {
         body.push(React.createElement('p', { key: 'cancelled', className: 'pwsh7_text' }, t('cancelled')));
         body.push(React.createElement('p', { key: 'cancelled-body', className: 'pwsh7_hint' },
-          interpolate(t('cancelledBody'), { url: releasesUrl })));
+          interpolate(t('cancelledBody'), { url: manualMsiUrl })));
+        body.push(manualLinks('manual-cancelled'));
       } else {
         body.push(React.createElement('p', { key: 'body', className: 'pwsh7_text' },
           interpolate(t('body'), { path: (host.installRoots && host.installRoots[scope]) || host.installRoot || '' })));
         body.push(React.createElement('p', { key: 'hint', className: 'pwsh7_hint' }, t('hint')));
-        body.push(React.createElement(
-          'p',
-          { key: 'manual', className: 'pwsh7_hint' },
-          React.createElement('a', {
-            className: 'pwsh7_link',
-            href: releasesUrl,
-            target: '_blank',
-            rel: 'noopener noreferrer'
-          }, t('manual'))
-        ));
+        body.push(manualLinks('manual'));
       }
     }
 
@@ -1387,8 +1422,8 @@
             value: scope, disabled: busy,
             onChange: function (event) { setScope(event.target.value); }
           },
-            React.createElement('option', { value: 'user' }, t('userScope')),
-            React.createElement('option', { value: 'system' }, t('systemScope')))));
+            React.createElement('option', { value: 'system' }, t('systemScope')),
+            React.createElement('option', { value: 'user' }, t('userScope')))));
       }
       if (host.dialect !== null && typeof host.dialect === 'object') {
         var sizes = host.dialect.sizes !== null && typeof host.dialect.sizes === 'object' ? host.dialect.sizes : {};
@@ -1593,7 +1628,11 @@
           React.createElement(
             'div',
             { key: 'header', className: 'pwsh7_header' },
-            React.createElement('h2', { key: 'title', id: 'pwsh7-dialog-title', className: 'pwsh7_title' }, t('title')),
+            React.createElement(
+              'h2',
+              { key: 'title', id: 'pwsh7-dialog-title', className: 'pwsh7_title' },
+              host.found === true ? t('titleReady') : t('title')
+            ),
             React.createElement(
               'button',
               {
@@ -1607,7 +1646,11 @@
               '\u00d7'
             )
           ),
-          React.createElement('p', { key: 'lead', className: 'pwsh7_description' }, t('lead')),
+          React.createElement(
+            'p',
+            { key: 'lead', className: 'pwsh7_description' },
+            host.found === true ? t('leadReady') : t('lead')
+          ),
           React.createElement('div', { key: 'body', className: 'pwsh7_body' }, body),
           React.createElement('div', { key: 'footer', className: 'pwsh7_footer' }, footer)
         )
@@ -2286,6 +2329,32 @@
 
     // Maintenance actions --------------------------------------------------------
     var actionChildren = [];
+    var latestLinks = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
+    var manualMsiUrl = textOrNull(latestLinks.msiUrl)
+      || textOrNull(host.releasesUrl)
+      || 'https://github.com/PowerShell/PowerShell/releases/latest';
+    var manualZipUrl = textOrNull(latestLinks.zipUrl)
+      || textOrNull(host.releasesUrl)
+      || 'https://github.com/PowerShell/PowerShell/releases/latest';
+    function manualLinkRow(key, msiLabel) {
+      return React.createElement(
+        'p',
+        { key: key, className: 'pwsh7_actionHint' },
+        React.createElement('a', {
+          className: 'pwsh7_link',
+          href: manualMsiUrl,
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        }, msiLabel),
+        ' · ',
+        React.createElement('a', {
+          className: 'pwsh7_link',
+          href: manualZipUrl,
+          target: '_blank',
+          rel: 'noopener noreferrer'
+        }, t('manualZip'))
+      );
+    }
 
     if (host.found && host.latest.updateAvailable) {
       actionChildren.push(React.createElement(
@@ -2296,6 +2365,7 @@
           current: host.latest.current !== null ? host.latest.current : (host.version !== null ? host.version : '')
         })
       ));
+      actionChildren.push(manualLinkRow('manual-upgrade', t('manualUpgradeMsi')));
       if (updating) {
         var updateButtons = [
           actionButton('update-cancel', t('confirmCancel'), 'update-cancel', {
@@ -2346,6 +2416,7 @@
           onClick: startInstall
         })
       ));
+      actionChildren.push(manualLinkRow('manual-install', t('manualMsi')));
     }
 
     if (host.userCopy) {

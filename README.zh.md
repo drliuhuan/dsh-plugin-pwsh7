@@ -96,10 +96,13 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 
 浏览器半边渲染到 DSH 根级 `shell.overlay` 槽位，因此在普通 Web GUI 和桌面壳里都能用，不需要另开窗口：
 
-- **何时弹出**：首次加载时检测不到 `pwsh.exe`；以及之后**每次 `pwsh` 工具因缺少 PowerShell 7
-  失败**时（`missingSeq`）。点“稍后”只关闭到下一次失败运行；只要仍然缺失，刷新页面也会再次弹出。
-- **做什么**：点“下载并安装”会启动共享的、由用户发起的安装任务，可选择用户或系统范围。弹窗依次显示
-  `下载 → 解压 → 验证`，以及已下载字节、总大小和百分比；“取消下载”可以中止。
+- **何时弹出**：首次加载时会弹出一次（即使已经检测到 PowerShell 7，也用于确认本次部署的设置）；
+  之后每次 `pwsh` 工具因缺少 PowerShell 7 失败时（`missingSeq`）再次弹出。已安装时标题与说明会显示
+  “PowerShell 7 设置 / 已检测到 PowerShell 7”，不会再误报“没有找到 pwsh.exe”。
+- **做什么**：点“下载并安装”会启动共享的、由用户发起的安装任务。默认走**系统级官方 MSI**；
+  需要便携副本时可选择“当前用户”。弹窗依次显示 `下载 → 解压 → 验证`，以及已下载字节、总大小和
+  百分比；“取消下载”可以中止。下载、失败和升级位置同时提供**手动 MSI** 与便携 **ZIP** 链接，
+  默认 MSI；最新版本检查返回前回退到官方 releases 页面。
 - **为什么只有一个任务**：弹窗和设置页共用一个协调器，所以无论用户从哪个界面开始安装，进度都一致，
   也不会在 `%LOCALAPPDATA%\dsh\pwsh7\tmp` 的同一个压缩包上互相踩踏。模型的 `shell_router` 工具不会启动安装。
 - **传输**：`GET /pwsh7/state`（快照）、`GET /pwsh7/events`（SSE，进度约 7 帧/秒）、
@@ -164,7 +167,9 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 安装只能由用户发起：Web 安装弹窗、设置 → PowerShell 7，或在 DSH 之外自行安装 PowerShell 7。
 模型工具不会启动安装。
 
-可在 Web 弹窗选择 `scope: "user"`（默认）或 `scope: "system"`。
+首次运行弹窗默认 `scope: "system"`（官方 MSI）；需要便携副本时选择 `scope: "user"`。
+首次运行弹窗和设置页都提供手动 **MSI** 下载/升级链接（默认）与便携 **ZIP** 链接；最新版本检查
+返回前回退到官方 PowerShell releases 页面。
 
 | 范围 | 方式 | 安装位置 | 持久 PATH |
 |---|---|---|---|
