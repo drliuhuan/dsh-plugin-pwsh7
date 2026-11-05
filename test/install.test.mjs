@@ -1005,7 +1005,9 @@ test('a manual ZIP installation is upgraded in place and keeps its PATH director
 
   assert.equal(result.ok, true, result.message);
   assert.equal(result.method, 'portable');
-  assert.equal(result.path, W.normalize(targetExe));
+  // The installer resolves the real directory so a junction is replaced at its target; on CI the
+  // temp path can use an 8.3 short name that realpath expands.
+  assert.equal(result.path, W.normalize(fs.realpathSync.native(targetExe)));
   assert.equal(fs.readFileSync(targetExe, 'utf8'), 'new');
   assert.equal(readRouterConfig(env).installed.pwsh.scope, 'user');
 });

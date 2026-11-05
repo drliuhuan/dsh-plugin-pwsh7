@@ -61,6 +61,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   copy is still active.
 - Uninstall's junction/reparse-point detection now works on Windows directory junctions that
   Node's `lstat` reports as plain directories, and removes the junction without following it.
+  It compares the real parent path plus the leaf name, so an 8.3 short path
+  (`C:\Users\RUNNER~1\...`) is no longer mistaken for a junction.
 
 ## [0.3.4] - 2026-10-27
 
