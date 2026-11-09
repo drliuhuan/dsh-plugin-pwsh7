@@ -4,6 +4,42 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-11-10
+
+### Added
+
+- **Basic rules (always on): `Remove-Item` deletions go to the Recycle Bin.** The system-prompt
+  section now always carries a deletion-safety paragraph — independent of the opt-in dialect level
+  and active in every route, including the forced `pwsh5` route. It states that `Remove-Item` (and
+  its aliases `rm`, `del`, `erase`, `rd`, `rmdir`, `ri`) moves files and directory trees to the
+  Recycle Bin, and that `cmd /c del`, `rd /s /q`, a nested `pwsh`/`powershell` process,
+  `[System.IO.File]::Delete` and `[System.IO.Directory]::Delete` are forbidden bypasses. Cost:
+  about 255 tokens per request; `shell_router status` reports it.
+- **Executor-level Recycle-Bin guard.** A `pwsh` command that mentions a removal command is
+  prefixed with a prelude that shadows `Remove-Item` and moves each FileSystem target to the Recycle
+  Bin through `Microsoft.VisualBasic.FileIO.FileSystem` (`SendToRecycleBin`), falling back to
+  `Shell.Application.NameSpace(10).MoveHere` and verifying that the item actually left its path.
+  There is no permanent-delete fallback: when both routes fail, the command fails with an explicit
+  error and nothing is deleted. Non-FileSystem providers (registry, environment variables,
+  certificates) keep their stock behavior.
+- The stock module-qualified `Microsoft.PowerShell.Management\Remove-Item` spelling is rewritten to
+  the redirected command, so it cannot bypass the shadowing function.
+- `Remove-Item` rejects `-Filter`, `-Include`, `-Exclude`, `-Stream` and `-Credential` under the
+  guard; `Get-ChildItem … | Remove-Item` selects items, and `-WhatIf`/`-Confirm` keep working.
+- The Settings page's prompt-guidance hint now discloses that the basic deletion-safety rules are
+  separate from the optional dialect layer and always on; the `pwsh5` copy says the deletion rule
+  still applies.
+
+### Changed
+
+- The prompt guidance disclosure no longer implies that every prompt layer is opt-in: the dialect
+  layer remains opt-in and off by default, while the basic rules always apply.
+- Guarded removals deliberately differ from the stock cmdlet: a non-empty directory is recycled as a
+  tree without `-Recurse`, hidden/read-only items are recycled regardless of `-Force`, `-Path` and
+  `-LiteralPath` may be combined, and a wildcard with no matches writes an error instead of
+  succeeding silently. Paths that cannot reach a Recycle Bin (network shares, volumes without one,
+  bin quota exceeded) fail with an explicit error and leave the item in place.
+
 ## [0.4.1] - 2026-11-05
 
 ### Fixed
@@ -350,6 +386,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Bilingual README (English/Chinese), bilingual plugin-manager locale, and a PowerShell 7 icon.
 - 49 unit tests (48 pass, 1 network-gated skip).
 
+[0.5.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.4.1...v0.5.0
 [0.3.3]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.2...v0.3.3
 [0.4.1]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/drliuhuan/dsh-plugin-pwsh7/compare/v0.3.4...v0.4.0

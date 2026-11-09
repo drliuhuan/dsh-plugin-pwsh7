@@ -16,7 +16,8 @@ import {
   createSetupService,
 } from '../lib/setup-service.mjs';
 import { createSetupHandlers, setupRouteRows } from '../lib/setup-routes.mjs';
-import { installRouterFeatures } from '../lib/router-features.mjs';
+import { composePromptText, installRouterFeatures } from '../lib/router-features.mjs';
+import { buildBasicRulesPrompt } from '../lib/rules.mjs';
 import { notePwshMissing } from '../lib/state.mjs';
 
 const W = path.win32;
@@ -386,6 +387,9 @@ test('installRouterFeatures wires the prompt and routes from the executor row', 
   assert.equal(sections[0].order, 5);
   assert.equal(typeof sections[0].text, 'function');
   assert.match(sections[0].text(), /setup dialog/);
+  // The deletion-safety basic rules are always on, independent of the opt-in dialect level.
+  assert.match(sections[0].text(), /Recycle Bin/);
+  assert.match(sections[0].text(), /Remove-Item/);
   assert.doesNotMatch(sections[0].text(), /dialect/i);
   assert.deepEqual(routes.map((row) => row.path), [
     SETUP_ROUTES.state,
@@ -400,6 +404,23 @@ test('installRouterFeatures wires the prompt and routes from the executor row', 
     SETUP_ROUTES.relocate,
     SETUP_ROUTES.selfcheck,
   ]);
+});
+
+test('the basic rules stay in the prompt on the forced pwsh5 route', () => {
+  const pwsh5 = composePromptText('pwsh5', '');
+  assert.ok(pwsh5.startsWith(buildBasicRulesPrompt()), 'the always-on rules come first');
+  assert.match(pwsh5, /Recycle Bin/);
+  assert.match(pwsh5, /Remove-Item/);
+  assert.match(pwsh5, /Windows PowerShell 5\.1/);
+  assert.ok(!pwsh5.includes('DIALECT-PARAGRAPH'), 'the opt-in dialect paragraph is not injected');
+
+  // The opt-in dialect paragraph rides between the basic rules and the maintenance paragraph.
+  const plugin = composePromptText('plugin', 'DIALECT-PARAGRAPH');
+  assert.ok(plugin.startsWith(buildBasicRulesPrompt()));
+  assert.match(plugin, /DIALECT-PARAGRAPH/);
+  assert.match(plugin, /setup dialog/);
+  assert.doesNotMatch(composePromptText('system', ''), /DIALECT-PARAGRAPH/);
+  assert.equal(composePromptText('plugin'), composePromptText('plugin', ''));
 });
 
 test('GET /pwsh7/state answers the JSON snapshot', async (t) => {

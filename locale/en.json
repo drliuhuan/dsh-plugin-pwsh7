@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Windows PowerShell 7 Router",
-    "description": "Routes DSH's pwsh tool to PowerShell 7 on Windows (or forces Windows PowerShell 5.1), with per-user detection, system installs and upgrades through the official in-place MSI, a Web setup dialog with live download progress, a Settings page with install status, self-check, route switching, per-user uninstall and system migration, and a sandbox-aware executor."
+    "description": "Routes DSH's pwsh tool to PowerShell 7 on Windows (or forces Windows PowerShell 5.1), always redirects Remove-Item deletions to the Recycle Bin, and provides per-user detection, system installs and upgrades through the official in-place MSI, a Web setup dialog with live download progress, a Settings page with install status, self-check, route switching, per-user uninstall and system migration, and a sandbox-aware executor."
   }
 }

@@ -8,6 +8,8 @@ Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具
 
 - 执行器继承 DSH 自带 `dsh-pwsh-sandbox` 的全部行为：沙箱模式、`sandbox_permissions` 升权、
   拒绝/runner 失败标记、后台任务、输出上限与 exit marker；本插件只替换可执行文件解析。
+- **删除安全始终开启。** 系统提示词中的基础规则与执行器注入的前置定义，把所有 `Remove-Item`
+  （及其别名）改为移入**回收站**——文件与整个目录树都一样——不存在永久删除的回退路径。
 - 找不到 PowerShell 7 时，提供模型可调用的 **`shell_router`** 工具做检测、诊断、自检、路由切换与卸载插件自装副本。
 - **安装永远不是自动的，也不会由模型发起。** 缺少 PowerShell 7 时 Web GUI 会弹出安装弹窗；
   只有用户在弹窗或 **设置 → PowerShell 7** 中点击安装，或用户自行安装 PowerShell 7 时才会安装。
@@ -46,7 +48,7 @@ Windows PowerShell 5.1。本插件保留官方执行器，只覆盖 `pwshPath` �
 通过 DSH 插件管理器从 npm 安装：
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.4.0
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.5.0
 ```
 
 或从本地目录安装（目录安装会链接源码，便于开发）：
@@ -70,6 +72,39 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 | `route` | 持久化 `route: "plugin"`、`route: "system"` 或 `route: "pwsh5"`，并返回新路由。`pwsh5` 强制 Windows PowerShell 5.1，并关闭全部 PowerShell 7 提示词层。 |
 | `uninstall` | 删除插件自装的用户级便携安装（文件、临时目录、托管 PATH 条目），保留路由偏好。 |
 
+### 基础规则（始终开启）：删除一律进回收站
+
+与下文可选的方言提示层不同，**基础规则是强制的、不能关闭**：它不属于可选的提示词层，
+在包括强制 `pwsh5` 在内的所有路由下都生效，每次请求约增加 **255 tokens**。
+
+同一条契约由两层共同保证——被删除的文件与目录必须可恢复：
+
+1. **系统提示词规则。** 提示小节声明：删除文件或目录必须移入回收站，绝不永久删除；
+   `Remove-Item` 及其别名（`rm`、`del`、`erase`、`rd`、`rmdir`、`ri`）都会被重定向；
+   `cmd /c del`、`rd /s /q`、嵌套 `pwsh`/`powershell` 进程、`[System.IO.File]::Delete`、
+   `[System.IO.Directory]::Delete` 属于被禁止的绕过方式。
+2. **执行器守卫。** 当 `pwsh` 命令涉及删除时，执行器会在命令前注入一小段前置定义，遮蔽
+   `Remove-Item`（原性别名解析到同一个函数），并把模块限定写法
+   `Microsoft.PowerShell.Management\Remove-Item` 改写为被重定向的命令，避免它绕过遮蔽。
+   所有文件系统目标都通过 `Microsoft.VisualBasic.FileIO.FileSystem`（`SendToRecycleBin`）
+   移入回收站；若该路径不可用，回退到 `Shell.Application` 的回收站（`NameSpace(10).MoveHere`）。
+   **没有永久删除回退**：两条回收站路径都失败时命令直接报错，且不会删除任何东西。
+   非文件系统 provider（注册表、环境变量、证书等）仍通过模块限定名走原 cmdlet。
+
+守卫需要真实路径而不是筛选器，因此 `Remove-Item` 会拒绝 `-Filter`、`-Include`、`-Exclude`、
+`-Stream` 和 `-Credential`；请用 `Get-ChildItem … | Remove-Item` 选择条目。`-WhatIf`/`-Confirm`
+仍然可用（前置定义支持 `ShouldProcess`）。与原生 cmdlet 相比还有几处刻意的细微差异：非空目录
+即使没有 `-Recurse` 也会整树回收；隐藏/只读条目不受 `-Force` 影响；`-Path` 与 `-LiteralPath`
+可以同时使用；通配符没有匹配时会写错误而不是静默成功。网络共享、没有回收站的卷、超过回收站
+配额的条目无法回收，因此命令会明确报错且条目保持原样。回收站中的条目可恢复但仍占用磁盘空间，
+所以插件不会声称空间已释放，也会提示模型不要在用户未要求时清空回收站。
+
+守卫只作用于模型侧 `pwsh` 工具运行的命令；插件自己的提权维护脚本（`powershell.exe -File`，
+用于清理安装残留）不经过它。`shell_router status` 会报告该规则及其提示词开销。
+
+守卫是命令文本层：故意混淆的调用（通过变量解析原 cmdlet、嵌套 shell 或 .NET API）无法被拦截，
+基础规则会明确禁止这些形式；而在模型正常的 `Remove-Item` 用法中，重定向是机械强制的，不是建议。
+
 ### 设置页（Web）
 
 浏览器半边还会在 Web GUI 的设置菜单注册一个 **PowerShell 7** 页面（`settings.section`）：
@@ -79,8 +114,8 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 - **路由**：可在“插件管理的 PowerShell 7”“系统默认”和“PowerShell 5.1”之间切换。系统默认只解析
   系统级安装（`Program Files`、用户 `Programs` 目录、Store 别名、插件目录以外的 `PATH` 条目），
   找不到系统 PowerShell 7 时按 DSH 原生行为回退到 Windows PowerShell 5.1；`PowerShell 5.1`
-  路由直接强制该可执行文件，并关闭全部 PowerShell 7 提示词层。选择写入 `config.json` 的
-  `route`，下一条 `pwsh` 命令生效。
+  路由直接强制该可执行文件，并关闭全部 PowerShell 7 提示词层（基础删除安全规则仍然生效）。
+  选择写入 `config.json` 的 `route`，下一条 `pwsh` 命令生效。
 - **自检**：检查可执行文件解析、PowerShell 主版本、路由、配置有效性、安装/范围一致性、持久 PATH
   条目、`@deepseek-ai/*` 加载、沙箱策略、是否有安装任务在运行，并以 `ok` / `warn` / `fail` 显示详情。
 - **安装/修复**：启动与安装弹窗相同的共享安装任务（用户级），显示实时进度。

@@ -9,6 +9,9 @@ Windows DeepSeek Harness (DSH) bundle that routes the model-facing **`pwsh` tool
 - The executor inherits every behavior of the stock `dsh-pwsh-sandbox` executor: sandbox modes,
   `sandbox_permissions` escalation, denial/runner-failure facts, background jobs, output caps, and
   exit markers. It only replaces executable resolution.
+- **Deletion safety is always on.** A basic rule in the system prompt and a prelude injected by the
+  executor send every `Remove-Item` (and its aliases) to the **Recycle Bin** — files and whole
+  directory trees — with no permanent-delete fallback.
 - When PowerShell 7 is missing, a model-facing **`shell_router`** tool reports status, diagnoses
   sandbox problems, runs a self-check, switches routing, and removes the plugin-managed copy.
 - **Installation is never automatic and is never started by the model.** When PowerShell 7 is
@@ -55,7 +58,7 @@ overrides only its `pwshPath` resolution:
 Install from npm through the DSH plugin manager:
 
 ```
-plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.4.0
+plugin_manager action=install_bundle target=dsh-plugin-pwsh7@0.5.0
 ```
 
 Or install from a local checkout (a directory install links the checkout, which is convenient while
@@ -81,9 +84,54 @@ The model-facing `shell_router` tool:
 | `route` | Persists `route: "plugin"`, `route: "system"`, or `route: "pwsh5"` and reports the new route. `pwsh5` forces Windows PowerShell 5.1 and disables every PowerShell 7 prompt layer. |
 | `uninstall` | Removes the plugin-managed per-user portable install (files, temporary directory, managed PATH entry) while keeping the routing preference. |
 
+### Basic rules (always on): deletions go to the Recycle Bin
+
+Unlike the dialect guidance below, the **basic rules are mandatory and cannot be turned off**. They
+are not part of the opt-in prompt layer, they stay active in every route (including the forced
+`pwsh5` route), and they cost about **255 tokens on every request**.
+
+Two levers enforce one contract — removed files and directories must be recoverable:
+
+1. **System-prompt rules.** The prompt section states that removing a file or directory moves it to
+   the Recycle Bin, never deletes it permanently; that `Remove-Item` and its aliases (`rm`, `del`,
+   `erase`, `rd`, `rmdir`, `ri`) are redirected; and that `cmd /c del`, `rd /s /q`, a nested
+   `pwsh`/`powershell` process, `[System.IO.File]::Delete` and `[System.IO.Directory]::Delete` are
+   forbidden bypasses.
+2. **Executor guard.** When a `pwsh` command mentions a removal command, the executor prepends a
+   small prelude that shadows `Remove-Item` (the stock aliases resolve to the same function), and it
+   rewrites the stock module-qualified `Microsoft.PowerShell.Management\Remove-Item` spelling to the
+   redirected command so that form cannot slip past the shadow. Every FileSystem target is moved to
+   the Recycle Bin through `Microsoft.VisualBasic.FileIO.FileSystem` (`SendToRecycleBin`), with a
+   `Shell.Application` Recycle-Bin fallback (`NameSpace(10).MoveHere`). There is **no
+   permanent-delete fallback**: if both routes fail, the command fails with an explicit error and
+   nothing is deleted. Non-FileSystem providers (registry, environment variables, certificates, …)
+   keep their stock behavior through the module-qualified cmdlet.
+
+The guard needs file paths rather than selectors, so `Remove-Item` refuses `-Filter`, `-Include`,
+`-Exclude`, `-Stream` and `-Credential`; select items with `Get-ChildItem … | Remove-Item` instead.
+`-WhatIf`/`-Confirm` still work (the prelude supports `ShouldProcess`). It also differs from the
+stock cmdlet in deliberately narrow ways: a non-empty directory is recycled as a tree even without
+`-Recurse`; hidden and read-only items are recycled regardless of `-Force`; `-Path` and
+`-LiteralPath` may be combined; and a wildcard that matches nothing writes an error instead of
+silently succeeding. A path on a network share, a volume without a Recycle Bin, or a file over the
+bin quota cannot be recycled, so the command fails with an explicit error and the item stays put.
+
+Items in the Recycle Bin remain recoverable but still use disk space, so the plugin never claims
+that space was reclaimed and the model is told not to empty the Recycle Bin unless the user asks.
+
+The guard is a command-text layer, so a deliberately obfuscated invocation of the stock cmdlet
+(resolving it through a variable, a nested shell, or a .NET API) cannot be intercepted; the basic
+rules explicitly forbid those forms. Within the model's normal `Remove-Item` usage the redirection
+is mechanical, not advisory.
+
+The guard applies to commands run through the model-facing `pwsh` tool; the plugin's own elevated
+maintenance scripts (`powershell.exe -File`, which delete install leftovers) are not routed through
+it. `shell_router status` reports the rule and its prompt cost.
+
 ### Model guidance (PowerShell 7 dialect)
 
-Prompt injection is **opt-in and off by default** (upgrading never starts spending prompt tokens).
+The **dialect layer** is opt-in and off by default (upgrading never starts spending its prompt
+tokens; the always-on basic rules above are separate and cost about 255 tokens).
 Two levels are available in the **setup dialog** (when PowerShell 7 is missing) and in
 **Settings → PowerShell 7 → Prompt guidance**; the choice is stored as `dialect` in `config.json` and
 takes effect on the next model step without a restart.
@@ -221,7 +269,7 @@ value takes precedence over automatic detection.
 |---|---|
 | `plugin` (default) | `DSH_PWSH_PATH` → `config.pwshPath` → well-known locations including the plugin-managed portable install → `PATH`; missing PowerShell 7 raises the setup hint. |
 | `system` | System-installed locations only: `Program Files`, `Program Files (x86)`, `%LOCALAPPDATA%\Programs`, the Store alias, `PATH` entries outside `%LOCALAPPDATA%\dsh\pwsh7`, then Windows PowerShell 5.1 as the stock last resort. `DSH_PWSH_PATH` and `config.pwshPath` are ignored. |
-| `pwsh5` | Always `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` (Windows PowerShell 5.1). Every PowerShell 7 prompt/dialect layer is disabled; the stored prompt level is kept for when the route is left. |
+| `pwsh5` | Always `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` (Windows PowerShell 5.1). Every PowerShell 7 prompt/dialect layer is disabled; the always-on deletion-safety rule keeps applying; the stored prompt level is kept for when the route is left. |
 
 The settings page switches the route at runtime (`POST /pwsh7/route`); no restart is needed.
 

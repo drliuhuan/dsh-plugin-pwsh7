@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Windows PowerShell 7 路由",
-    "description": "把 DSH 的 pwsh 工具路由到 PowerShell 7（也可强制 Windows PowerShell 5.1），支持自动检测、通过官方 MSI 原地安装/升级系统级 PowerShell 7、带实时下载进度的 Web 安装弹窗、设置页（安装状态、自检、路由切换、卸载当前用户副本与迁移到系统范围），以及沙箱模式。"
+    "description": "把 DSH 的 pwsh 工具路由到 PowerShell 7（也可强制 Windows PowerShell 5.1），所有 Remove-Item 删除都会改为移入回收站，并支持自动检测、通过官方 MSI 原地安装/升级系统级 PowerShell 7、带实时下载进度的 Web 安装弹窗、设置页（安装状态、自检、路由切换、卸载当前用户副本与迁移到系统范围），以及沙箱模式。"
   }
 }
