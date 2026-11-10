@@ -142,7 +142,19 @@ under the home directory), and ordinary files and folders inside the workspace a
 refusal reaches the command as an explicit error: nothing is deleted, and the model must tell the
 user the exact path so they can delete it themselves in Explorer. The Recycle Bin directory of the
 current user is also probed for writability before any operation (an unwritable or missing bin is
-refused, not attempted). These refusals — protected
+refused, not attempted).
+
+**Full access widens the reach, not the protections.** Under `danger-full-access` the bridge accepts
+paths outside the session workspace — that mode exists to work on files elsewhere, and the sandbox
+no longer contains anything — while every protected location, the over-long-path limit, the volume
+checks and the forbidden command forms stay refused exactly as under `workspace-write`. Under
+`workspace-write` the grant remains the session workspace.
+
+**Scripts are inspected before they run.** A command that names a script file (`.ps1`, `.psm1`,
+`.cmd`, `.bat`) is refused when the script body contains a removal command — script bodies are
+outside the text guard, and this check applies in every sandbox mode (the mode is never consulted).
+Scripts that cannot be read, or are larger than 2 MB, are refused rather than run uninspected. A
+script created and executed inside the same command remains a documented gap. These refusals — protected
 locations, over-long paths, a disabled or too-small Recycle Bin, and the forbidden command forms
 (Clear-RecycleBin, cmd /c del, .NET Delete, nested shells), and volumes that have no Recycle
 Bin at all (network, removable, optical or non-NTFS volumes) — are applied before and

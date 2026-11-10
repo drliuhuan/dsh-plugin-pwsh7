@@ -24,7 +24,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   path and say the user can delete it themselves in Explorer when recycling is refused (too-long
   path, network/removable/non-NTFS volume, disabled or unwritable bin, over-quota item, protected
   location, or a shell that could not confirm the record) — never to try another deletion method.
-- **Volumes without a Recycle Bin are refused**: a network drive / UNC share, a removable or optical
+- **`danger-full-access` widens the reach, never the protections**: the bridge's grant then accepts
+  paths outside the session workspace (that mode exists to work on files elsewhere), while the
+  protected-location, over-long-path, volume, capacity and forbidden-command refusals stay exactly
+  as under `workspace-write`.
+- **Scripts are inspected before they run** (every sandbox mode): a command that names a
+  `.ps1`/`.psm1`/`.cmd`/`.bat` file is refused when the body contains a removal command; unreadable
+  or over-2 MB scripts are refused too. A script generated and run inside the same command remains
+  the documented gap.- **Volumes without a Recycle Bin are refused**: a network drive / UNC share, a removable or optical
   drive, and a non-NTFS volume (FAT/exFAT/ReFS) cannot recycle — Windows deletes permanently there —
   so the helper refuses them before any operation (the volume type is probed with DriveInfo).
 - **Huge items are refused before the shell runs**: the capacity pre-check now falls back to 5% of

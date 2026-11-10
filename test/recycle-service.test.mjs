@@ -436,3 +436,49 @@ test('a path longer than the Windows shell limit is refused before any deletion'
   assert.equal(called, false, 'the helper must not run for a long path');
   assert.equal(existsSync(leaf), true, 'the long-path file must survive');
 });
+test('danger-full-access grants accept paths outside the workspace but never protected ones', async (t) => {
+  const workspace = makeWorkspace(t);
+  const outside = join(tmpdir(), `dsh-pwsh7-outside-${process.pid}-${Date.now()}.txt`);
+  writeFileSync(outside, 'x');
+  const calls = [];
+  const service = createRecycleService({
+    allowOutside: true,
+    runRecycles: async (paths) => { calls.push(...paths); return { results: paths.map((path) => ({ path, code: 0 })) }; },
+    verify: () => true,
+    locate: () => null,
+  });
+  t.after(() => { try { rmSync(outside, { force: true }); } catch { /* cleanup only */ } });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  assert.equal(grant !== null, true);
+  const allowed = await post(url, grant.token, { paths: [outside] });
+  assert.equal(allowed.status, 200);
+  assert.deepEqual(calls, [outside], 'the widened grant reaches the runner');
+  const protectedResponse = await post(url, grant.token, { paths: [process.env.USERPROFILE] });
+  assert.equal(protectedResponse.status, 403);
+  assert.match((await protectedResponse.json()).error, /destructive removal/);
+});
+
+test('a grant can widen a workspace-bound bridge explicitly', async (t) => {
+  const workspace = makeWorkspace(t);
+  const outside = join(tmpdir(), `dsh-pwsh7-widen-${process.pid}-${Date.now()}.txt`);
+  writeFileSync(outside, 'x');
+  const calls = [];
+  const service = createRecycleService({
+    allowOutside: false,
+    runRecycles: async (paths) => { calls.push(...paths); return { results: paths.map((path) => ({ path, code: 0 })) }; },
+    verify: () => true,
+    locate: () => null,
+  });
+  t.after(() => { try { rmSync(outside, { force: true }); } catch { /* cleanup only */ } });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const bound = service.grant(workspace);
+  assert.equal((await post(url, bound.token, { paths: [outside] })).status, 403);
+  const widened = service.grant(workspace, { allowOutside: true });
+  assert.equal((await post(url, widened.token, { paths: [outside] })).status, 200);
+  assert.deepEqual(calls, [outside]);
+});
