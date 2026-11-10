@@ -184,9 +184,13 @@ test('the prelude asks the host bridge and never recycles in-process', {
     let body = '';
     request.on('data', (chunk) => { body += chunk; });
     request.on('end', () => {
-      seen.push({ url: request.url, token: request.headers['x-dsh-recycle-token'], body: JSON.parse(body) });
+      const parsed = JSON.parse(body);
+      // Echo the path the prelude sent: the bridge answers per requested path, and on a runner
+      // the prelude's `$item.FullName` can differ from Node's spelling (8.3 short name).
+      const sent = parsed.paths?.[0] ?? file;
+      seen.push({ url: request.url, token: request.headers['x-dsh-recycle-token'], body: parsed });
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ results: [{ path: file, ok: true, code: 0, detail: '' }] }));
+      response.end(JSON.stringify({ results: [{ path: sent, ok: true, code: 0, detail: '' }] }));
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -201,7 +205,8 @@ test('the prelude asks the host bridge and never recycles in-process', {
   assert.equal(seen.length, 1, 'exactly one bridge request');
   assert.equal(seen[0].url, '/recycle');
   assert.equal(seen[0].token, 'test-token');
-  assert.deepEqual(seen[0].body, { paths: [file] });
+  assert.equal(seen[0].body.paths.length, 1);
+  assert.equal(path.basename(seen[0].body.paths[0]).toLowerCase(), 'bridged.txt');
   assert.ok(fs.existsSync(file), 'the fake bridge did not delete anything');
 });
 
@@ -212,10 +217,12 @@ test('the prelude fails closed when the bridge reports the recycle was not confi
   const file = path.join(directory, 'refused.txt');
   fs.writeFileSync(file, 'x');
   const server = http.createServer((request, response) => {
-    request.resume();
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
     request.on('end', () => {
+      const sent = JSON.parse(body === '' ? '{}' : body).paths?.[0] ?? file;
       response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify({ results: [{ path: file, ok: false, code: 0, detail: 'no Recycle Bin record was written' }] }));
+      response.end(JSON.stringify({ results: [{ path: sent, ok: false, code: 0, detail: 'no Recycle Bin record was written' }] }));
     });
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
