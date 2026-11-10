@@ -3,7 +3,7 @@
 // Run with: node --test test/recycle-service.test.mjs (or: node test/recycle-service.test.mjs)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -169,4 +169,119 @@ test('closed services refuse grants', async (t) => {
   const service = createRecycleService({ runRecycles: async () => ({ results: [] }) });
   await service.close();
   assert.equal(service.grant(workspace), null);
+});
+
+test('restore only accepts paths this session recycled', async (t) => {
+  const workspace = makeWorkspace(t);
+  const file = join(workspace, 'restorable.txt');
+  writeFileSync(file, 'x');
+  const service = createRecycleService({
+    runRecycles: async (paths) => {
+      for (const path of paths) rmSync(path, { force: true });
+      return { results: paths.map((path) => ({ path, code: 0 })) };
+    },
+    verify: () => true,
+    locate: () => join(workspace, '$Ifake'),
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  const recycled = await (await post(url, grant.token, { paths: [file] })).json();
+  assert.equal(recycled.results[0].ok, true);
+  assert.equal(service.journal.length, 1);
+  assert.equal(service.journal[0].path, file);
+
+  // A path that was never removed by this bridge is not a candidate, no matter where it is.
+  const outsider = join(workspace, 'never-deleted.txt');
+  writeFileSync(outsider, 'y');
+  const refused = service.restore([outsider], workspace);
+  assert.equal(refused.results[0].ok, false);
+  assert.match(refused.results[0].detail, /no removal of this path was recorded/);
+});
+
+test('restore refuses an existing target and never overwrites it', async (t) => {
+  const workspace = makeWorkspace(t);
+  const file = join(workspace, 'collision.txt');
+  writeFileSync(file, 'original');
+  const record = join(workspace, '$Ifake2');
+  const payload = join(workspace, '$Rfake2');
+  writeFileSync(record, '');
+  writeFileSync(payload, 'original');
+  const service = createRecycleService({
+    runRecycles: async (paths) => {
+      for (const path of paths) rmSync(path, { force: true });
+      return { results: paths.map((path) => ({ path, code: 0 })) };
+    },
+    verify: () => true,
+    locate: () => record,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  await post(url, grant.token, { paths: [file] });
+  // Something new took the path after the removal.
+  writeFileSync(file, 'replacement');
+  const refused = service.restore([file], workspace);
+  assert.equal(refused.results[0].ok, false);
+  assert.match(refused.results[0].detail, /already exists/);
+  assert.equal(readFileSync(file, 'utf8'), 'replacement', 'the new file must survive');
+});
+
+test('restore puts a journaled file back and retires the journal entry', async (t) => {
+  const workspace = makeWorkspace(t);
+  const file = join(workspace, 'bring-back.txt');
+  writeFileSync(file, 'payload');
+  const record = join(workspace, '$Ifake3');
+  const payload = join(workspace, '$Rfake3');
+  writeFileSync(record, '');
+  writeFileSync(payload, 'payload');
+  const service = createRecycleService({
+    runRecycles: async (paths) => {
+      for (const path of paths) rmSync(path, { force: true });
+      return { results: paths.map((path) => ({ path, code: 0 })) };
+    },
+    verify: () => true,
+    locate: () => record,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  await post(url, grant.token, { paths: [file] });
+  assert.equal(existsSync(file), false);
+  const outcome = service.restore([file], workspace);
+  assert.equal(outcome.results[0].ok, true);
+  assert.equal(readFileSync(file, 'utf8'), 'payload');
+  assert.equal(existsSync(record), false, 'the $I metadata record is removed');
+  assert.equal(service.journal.length, 0, 'the journal entry is retired after a successful restore');
+});
+
+test('restore refuses when the Recycle Bin entry is already gone', async (t) => {
+  const workspace = makeWorkspace(t);
+  const file = join(workspace, 'gone-entry.txt');
+  writeFileSync(file, 'x');
+  const record = join(workspace, '$Ifake4');
+  const payload = join(workspace, '$Rfake4');
+  writeFileSync(record, '');
+  writeFileSync(payload, 'x');
+  const service = createRecycleService({
+    runRecycles: async (paths) => {
+      for (const path of paths) rmSync(path, { force: true });
+      return { results: paths.map((path) => ({ path, code: 0 })) };
+    },
+    verify: () => true,
+    locate: () => record,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  await post(url, grant.token, { paths: [file] });
+  // The user restored it in Explorer (or emptied the bin) in the meantime.
+  rmSync(payload, { force: true });
+  const refused = service.restore([file], workspace);
+  assert.equal(refused.results[0].ok, false);
+  assert.match(refused.results[0].detail, /Recycle Bin entry is gone/);
 });

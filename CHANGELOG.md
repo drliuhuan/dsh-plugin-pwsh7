@@ -42,6 +42,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Tests: `test/recycle-service.test.mjs` (token authority, workspace binding, verified-vs-unverified
   verdicts, helper failure, revocation) and new prelude cases (bridge success, unconfirmed recycle,
   missing bridge fails closed), plus the renamed prelude sourcing test.
+- **Restore from the Recycle Bin (`shell_router` action `restore`).** The bridge journals every
+  removal it verified (original path, `$I`/`$R` pair, type, size) in memory for the life of the
+  process. `restore <path>` puts a journaled item back with a same-volume rename of the `$R`
+  payload (timestamps, attributes and a whole tree preserved), removes the `$I` record and verifies
+  the result. Only items **this session** recycled through the `pwsh` tool qualify; journaled
+  entries are dropped on restart, and deletions made by scripts, native APIs or outside DSH cannot
+  be restored (the tool refuses with the reason and points at Explorer). The model is required to
+  tell the user, after every removal, that the item is in the Recycle Bin, that `shell_router
+  restore` can undo it while this session runs, and which cases fall outside that.
 
 ### Changed
 

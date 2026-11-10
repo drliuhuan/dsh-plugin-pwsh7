@@ -88,7 +88,7 @@ The model-facing `shell_router` tool:
 
 Unlike the dialect guidance below, the **basic rules are mandatory and cannot be turned off**. They
 are not part of the opt-in prompt layer, they stay active in every route (including the forced
-`pwsh5` route), and they cost about **255 tokens on every request**.
+`pwsh5` route), and they cost about **395 tokens on every request** (1,578 characters).
 
 Two levers enforce one contract — removed files and directories must be recoverable:
 
@@ -124,6 +124,16 @@ bin quota cannot be recycled, so the command fails with an explicit error and th
 Items in the Recycle Bin remain recoverable but still use disk space, so the plugin never claims
 that space was reclaimed and the model is told not to empty the Recycle Bin unless the user asks.
 
+**Restore.** The bridge journals every removal it verified (original path, `$I`/`$R` pair, type and
+size; in memory, bounded, cleared when DSH stops). `shell_router` action `restore` with a path puts
+one of those items back — a same-volume rename of the `$R` payload, so timestamps, attributes and a
+whole tree return untouched; the `$I` record is removed and the result is verified. This is
+deliberately narrow: only items **this session** recycled through the `pwsh` tool can be restored.
+After a DSH restart, or for deletions made by a script, a native API, or outside DSH (all of which
+the text-level guard cannot see), the journal has no entry and the tool refuses with a reason —
+those are restored from the Recycle Bin in Explorer. The model is required to say so after every
+removal it performs.
+
 The guard is a command-text layer, so a deliberately obfuscated invocation of the stock cmdlet
 (resolving it through a variable, a nested shell, or a .NET API) cannot be intercepted; the basic
 rules explicitly forbid those forms. Within the model's normal `Remove-Item` usage the redirection
@@ -136,7 +146,7 @@ it. `shell_router status` reports the rule and its prompt cost.
 ### Model guidance (PowerShell 7 dialect)
 
 The **dialect layer** is opt-in and off by default (upgrading never starts spending its prompt
-tokens; the always-on basic rules above are separate and cost about 255 tokens).
+tokens; the always-on basic rules above are separate and cost about 395 tokens (1,578 characters).
 Two levels are available in the **setup dialog** (when PowerShell 7 is missing) and in
 **Settings → PowerShell 7 → Prompt guidance**; the choice is stored as `dialect` in `config.json` and
 takes effect on the next model step without a restart.

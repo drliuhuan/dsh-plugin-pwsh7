@@ -31,6 +31,12 @@ test('the basic rules state the Recycle-Bin contract and the forbidden bypasses'
   assert.match(prompt, /Microsoft\.PowerShell\.Management\\Remove-Item/);
   assert.match(prompt, /Get-ChildItem/);
   assert.match(prompt, /-WhatIf/);
+  // Deleting is only half the contract: the user must be told how to get it back, and when DSH
+  // cannot help.
+  assert.match(prompt, /shell_router/);
+  assert.match(prompt, /restore/);
+  assert.match(prompt, /restart/);
+  assert.match(prompt, /script or a native API/);
   assert.doesNotMatch(prompt, /dialect/i);
   assert.equal(buildBasicRulesPrompt(), BASIC_RULES.join(' '));
 });
@@ -40,7 +46,7 @@ test('the disclosed prompt cost matches the paragraph', () => {
   assert.equal(sizes.chars, buildBasicRulesPrompt().length);
   assert.equal(sizes.tokens, Math.ceil(sizes.chars / 4));
   // The README, CHANGELOG and status line disclose this exact figure; keep them in sync.
-  assert.equal(sizes.tokens, 255);
+  assert.equal(sizes.tokens, 395);
 });
 
 test('removal commands are detected, unrelated words are not', () => {
