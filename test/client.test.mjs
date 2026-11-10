@@ -459,9 +459,11 @@ test('the settings page renders the opt-in prompt guidance with its disclosed co
   assert.ok(text.includes('98%'));
 
   const boxes = findNode(tree, (node) => node.props !== undefined && node.props.type === 'checkbox');
-  assert.equal(boxes.length, 2);
+  // Two prompt-guidance toggles plus the deletion-protection switch (on by default).
+  assert.equal(boxes.length, 3);
   assert.equal(boxes[0].props.checked, true);
   assert.equal(boxes[1].props.checked, true);
+  assert.equal(boxes[2].props.checked, true);
 });
 
 test('an existing PowerShell 7 keeps the first-run dialog open across state frames', async () => {

@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { binRecordExists, createRecycleService, isProtectedRemoval } from '../lib/recycle-service.mjs';
+import { homedir } from 'node:os';
 
 const makeWorkspace = (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'dsh-pwsh7-bridge-'));
@@ -481,4 +482,47 @@ test('a grant can widen a workspace-bound bridge explicitly', async (t) => {
   const widened = service.grant(workspace, { allowOutside: true });
   assert.equal((await post(url, widened.token, { paths: [outside] })).status, 200);
   assert.deepEqual(calls, [outside]);
+});
+test('hard boundaries are checked on the resolved path, not the spelling', async (t) => {
+  const workspace = makeWorkspace(t);
+  const env = process.env;
+  const systemRoot = env.SystemRoot ?? 'C:\\Windows';
+  const programFiles = env.ProgramFiles ?? 'C:\\Program Files';
+  // Values that arrive through environment variables resolve to the same protected trees.
+  for (const candidate of [env.USERPROFILE, systemRoot, programFiles]) {
+    assert.equal(isProtectedRemoval(candidate, workspace), true, candidate);
+  }
+  // `..` segments are canonicalized before the check: this resolves to C:\Users (the profile's parent).
+  assert.equal(isProtectedRemoval(join(env.USERPROFILE, 'AppData', '..', '..'), workspace), true);
+  // And the bridge refuses them through its real endpoint too.
+  const service = createRecycleService({
+    allowOutside: true,
+    runRecycles: async (paths) => ({ results: paths.map((path) => ({ path, code: 0 })) }),
+    verify: () => true,
+    locate: () => null,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant('C:\\');
+  assert.equal(grant !== null, true);
+  for (const candidate of [systemRoot, env.USERPROFILE]) {
+    const response = await post(url, grant.token, { paths: [candidate] });
+    assert.equal(response.status, 403, candidate);
+    assert.match((await response.json()).error, /destructive removal/);
+  }
+});
+test('the documented defaults stay protected even if an environment variable is rewritten', (t) => {
+  const workspace = makeWorkspace(t);
+  // The literal defaults are part of the protected set, not only the values read from the
+  // environment: rewriting SystemRoot/ProgramFiles can widen it but never narrow it.
+  for (const literal of ['C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)', 'C:\\ProgramData']) {
+    assert.equal(isProtectedRemoval(literal, workspace), true, literal);
+  }
+  // Every plausible spelling of the profile is protected.
+  assert.equal(isProtectedRemoval(homedir(), workspace), true);
+  assert.equal(isProtectedRemoval(process.env.USERPROFILE, workspace), true);
+  if (process.env.HOMEDRIVE && process.env.HOMEPATH) {
+    assert.equal(isProtectedRemoval(process.env.HOMEDRIVE + process.env.HOMEPATH, workspace), true);
+  }
 });

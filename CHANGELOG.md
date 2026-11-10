@@ -28,6 +28,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths outside the session workspace (that mode exists to work on files elsewhere), while the
   protected-location, over-long-path, volume, capacity and forbidden-command refusals stay exactly
   as under `workspace-write`.
+- **Deletion protection is switchable** (Settings → PowerShell 7 → Deletion protection): on by
+  default; turning it off takes two consecutive warnings and then every deletion behaves like stock
+  PowerShell — no prelude, bridge, script inspection or command refusals, and the basic prompt rules
+  are dropped while it is off. Stored additively as `deletionGuard` in `config.json`.
+- **Protected bases are redundant and resolved**: the documented defaults (`C:\Windows`, Program
+  Files, Program Files (x86), ProgramData) and every plausible profile spelling are protected even
+  when an environment variable is absent or rewritten; `$env:NAME` is expanded by the shell and `..`
+  / links are canonicalized before the check, so `ABC=C:\` followed by removing `ABC` is refused
+  exactly like `C:\`.
 - **A user-approved override exists for deletion scripts**: when the user explicitly asks for one,
   the model may prefix the command with `# dsh-pwsh7: user-approved script deletions`; the scan is
   skipped for that command and a visible warning says the deletions are permanent and cannot be

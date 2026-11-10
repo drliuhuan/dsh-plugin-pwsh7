@@ -31,6 +31,7 @@
   /** Maintenance routes used by the Settings page (v0.3.0). */
   var ROUTE_ROUTE = '/pwsh7/route';
   var ROUTE_DIALECT = '/pwsh7/dialect';
+  var ROUTE_DELETION_GUARD = '/pwsh7/deletion-guard';
   var ROUTE_ONBOARDING = '/pwsh7/onboarding';
   var ROUTE_LATEST = '/pwsh7/latest';
   var ROUTE_UNINSTALL = '/pwsh7/uninstall';
@@ -141,6 +142,14 @@
     dialectSaving: 'Saving prompt guidance…',
     dialectToggleCommon: 'Common guidance',
     dialectToggleForce: 'Force substitution',
+    sectionDeletion: 'Deletion protection',
+    deletionHint: 'On by default: every removal goes to the Recycle Bin, destructive commands and protected locations are refused, and scripts are inspected before they run. Turning it off makes deletions behave exactly like stock PowerShell — permanent, with no Recycle Bin and no DSH recovery.',
+    deletionToggle: 'Protect deletions (Recycle Bin only)',
+    deletionSaving: 'Saving deletion protection…',
+    deletionOff1: 'Turn off deletion protection? Every deletion will behave like stock PowerShell: files are removed permanently and DSH will no longer use the Recycle Bin.',
+    deletionOff2: 'Second warning: with deletion protection off, deleted files CANNOT be recovered by DSH. Turn it off anyway?',
+    deletionOnSaved: 'Deletion protection is on again.',
+    deletionOffSaved: 'Deletion protection is off: deletions now behave like stock PowerShell.',
     sectionActions: 'Maintenance',
     labelPsVersion: 'PowerShell version',
     labelSystemInstall: 'System installation',
@@ -315,6 +324,14 @@
     dialectSaving: '正在保存提示词注入设置…',
     dialectToggleCommon: '常见注入',
     dialectToggleForce: '强制替换',
+    sectionDeletion: '删除保护',
+    deletionHint: '默认开启：所有删除都进回收站，毁灭性命令和受保护位置会被拒绝，脚本执行前会先检查。关闭后删除行为完全恢复为 PowerShell 原始行为——永久删除、不进回收站、DSH 无法恢复。',
+    deletionToggle: '删除保护（只进回收站）',
+    deletionSaving: '正在保存删除保护…',
+    deletionOff1: '确定要关闭删除保护吗？关闭后所有删除都按 PowerShell 原始行为执行：文件被永久删除，DSH 不再使用回收站。',
+    deletionOff2: '第二次警告：关闭删除保护后，删除的文件 DSH 将无法恢复。仍然继续关闭吗？',
+    deletionOnSaved: '删除保护已重新开启。',
+    deletionOffSaved: '删除保护已关闭：删除行为现在与 PowerShell 原始行为一致。',
     sectionActions: '维护操作',
     labelPsVersion: 'PowerShell 版本',
     labelSystemInstall: '系统安装',
@@ -712,6 +729,11 @@
           forcedChars: typeof sizes.forcedChars === 'number' ? sizes.forcedChars : null
         };
       })(raw.dialect),
+      deletionGuard: raw.deletionGuard === undefined
+        ? true
+        : (raw.deletionGuard !== null && typeof raw.deletionGuard === 'object'
+          ? raw.deletionGuard.enabled === true
+          : raw.deletionGuard === true),
       onboarding: {
         completed: raw.onboarding !== null && typeof raw.onboarding === 'object' && raw.onboarding.completed === true
       },
@@ -1890,6 +1912,26 @@
       });
     }
 
+    function setDeletionGuard(enabled) {
+      if (host === null) return;
+      var next = enabled === true;
+      if (next === host.deletionGuard) return;
+      if (!next) {
+        // Two consecutive warnings before the protection is removed; either cancel keeps it on.
+        if (!window.confirm(t('deletionOff1'))) { refresh(); return; }
+        if (!window.confirm(t('deletionOff2'))) { refresh(); return; }
+      }
+      runAction('deletion-guard', function () {
+        return postJson(ROUTE_DELETION_GUARD, { enabled: next }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+          if (mounted.current) {
+            setNotice({ text: t(next ? 'deletionOnSaved' : 'deletionOffSaved'), warnings: [] });
+          }
+        });
+      });
+    }
+
     function startInstall() {
       runAction('install', function () {
         return postJson(ROUTE_INSTALL, { method: 'auto', scope: 'user' }).then(function (data) {
@@ -2327,6 +2369,34 @@
         : null
     );
 
+    // Deletion protection (on by default; turning it off takes two warnings) -------------
+    var deletionCard = React.createElement(
+      'section',
+      { key: 'deletion', className: 'pwsh7_card' },
+      React.createElement('h3', { key: 'title', className: 'pwsh7_cardTitle' }, t('sectionDeletion')),
+      React.createElement('p', { key: 'hint', className: 'pwsh7_actionHint' }, t('deletionHint')),
+      React.createElement(
+        'label',
+        { key: 'toggle', className: 'pwsh7_toggle' },
+        React.createElement('input', {
+          type: 'checkbox',
+          checked: host.deletionGuard === true,
+          disabled: busy,
+          onChange: function (event) {
+            setDeletionGuard(event !== null && event.target.checked === true);
+          }
+        }),
+        React.createElement(
+          'span',
+          { className: 'pwsh7_toggleBody' },
+          React.createElement('span', { className: 'pwsh7_toggleTitle' }, t('deletionToggle'))
+        )
+      ),
+      busyAction === 'deletion-guard'
+        ? React.createElement('p', { key: 'saving', className: 'pwsh7_hint' }, t('deletionSaving'))
+        : null
+    );
+
     // Maintenance actions --------------------------------------------------------
     var actionChildren = [];
     var latestLinks = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
@@ -2609,6 +2679,7 @@
             installCard,
             routeCard,
             dialectCard,
+            deletionCard,
             actionsCard
           )
         )

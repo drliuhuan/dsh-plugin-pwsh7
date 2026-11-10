@@ -144,11 +144,25 @@ user the exact path so they can delete it themselves in Explorer. The Recycle Bi
 current user is also probed for writability before any operation (an unwritable or missing bin is
 refused, not attempted).
 
+The protected set is compared on the **resolved** path: PowerShell expands `$env:NAME` before the
+bridge sees the path, `..` segments and links are canonicalized, and the documented defaults
+(`C:\Windows`, Program Files, Program Files (x86), ProgramData, and every plausible profile spelling:
+`USERPROFILE`, `HOMEDRIVE`+`HOMEPATH`, `os.homedir()`) are protected even when the matching
+environment variable is absent or rewritten. An environment variable can widen the protected set,
+never narrow it or redirect it — `ABC=C:\` followed by removing `ABC` is refused exactly like `C:\`.
+
 **Full access widens the reach, not the protections.** Under `danger-full-access` the bridge accepts
 paths outside the session workspace — that mode exists to work on files elsewhere, and the sandbox
 no longer contains anything — while every protected location, the over-long-path limit, the volume
 checks and the forbidden command forms stay refused exactly as under `workspace-write`. Under
 `workspace-write` the grant remains the session workspace.
+
+**The switch.** Settings → PowerShell 7 → Deletion protection (on by default) turns the whole layer
+off: the prelude, the bridge, the script inspection and the destructive-command refusals stop, and
+deletions behave exactly like stock PowerShell (permanent). Turning it off takes two consecutive
+confirmations; while it is off the basic prompt rules are dropped, so the model is not told to
+recycle. The setting is additive in `config.json` (`deletionGuard`), so older config files keep the
+protection on.
 
 **Scripts are inspected before they run.** A command that *runs* a script it names (`.ps1`,
 `.psm1`, `.cmd`, `.bat` via `cmd /c`, `pwsh -File`, the call/dot-source operators, or the script in
