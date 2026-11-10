@@ -28,7 +28,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths outside the session workspace (that mode exists to work on files elsewhere), while the
   protected-location, over-long-path, volume, capacity and forbidden-command refusals stay exactly
   as under `workspace-write`.
-- **Scripts are inspected before they run** (every sandbox mode): a command that names a
+- **Scripts are inspected before they run** (every sandbox mode): a command that runs a
   `.ps1`/`.psm1`/`.cmd`/`.bat` file is refused when the body contains a removal command; unreadable
   or over-2 MB scripts are refused too. A script generated and run inside the same command remains
   the documented gap.- **Volumes without a Recycle Bin are refused**: a network drive / UNC share, a removable or optical

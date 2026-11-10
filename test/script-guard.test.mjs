@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 import {
   destructiveScriptContent,
+  executedScriptReferences,
   scriptReferencesInCommand,
   scriptRefusalReason,
 } from '../lib/script-guard.mjs';
@@ -72,4 +73,16 @@ test('the reference scanner and content scanner stay narrow enough', () => {
   // Fail closed on purpose: a removal word inside a string or comment also refuses the script.
   assert.match(destructiveScriptContent('Write-Output "del is forbidden"'), /removal command/);
   assert.equal(destructiveScriptContent('format C: /q'), null);
+});
+
+test('a command that merely mentions a script file is not refused', (t) => {
+  const dir = makeDir(t);
+  const script = join(dir, 'cleanup.cmd');
+  writeFileSync(script, 'del /f /q x\r\n');
+  // Deleting or reading the script itself must stay possible; only running it is refused.
+  assert.equal(scriptRefusalReason(`Remove-Item "${script}"`, dir), null);
+  assert.equal(scriptRefusalReason(`Get-Content "${script}"`, dir), null);
+  assert.deepEqual(executedScriptReferences(`Remove-Item "${script}"`), []);
+  assert.deepEqual(executedScriptReferences(`cmd /c "${script}"`), [script]);
+  assert.deepEqual(executedScriptReferences(`. "${script}"`), [script]);
 });
