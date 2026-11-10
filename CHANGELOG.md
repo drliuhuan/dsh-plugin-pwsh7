@@ -44,7 +44,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   missing bridge fails closed), plus the renamed prelude sourcing test.
 - **Restore from the Recycle Bin (`shell_router` action `restore`).** The bridge journals every
   removal it verified (original path, `$I`/`$R` pair, type, size) in memory for the life of the
-  process. `restore <path>` puts a journaled item back with a same-volume rename of the `$R`
+  process. `restore <path>` — and the same loopback endpoint's `POST /restore` — puts a journaled item back with a same-volume rename of the `$R`
   payload (timestamps, attributes and a whole tree preserved), removes the `$I` record and verifies
   the result. Only items **this session** recycled through the `pwsh` tool qualify; journaled
   entries are dropped on restart, and deletions made by scripts, native APIs or outside DSH cannot

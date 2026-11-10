@@ -285,3 +285,58 @@ test('restore refuses when the Recycle Bin entry is already gone', async (t) => 
   assert.equal(refused.results[0].ok, false);
   assert.match(refused.results[0].detail, /Recycle Bin entry is gone/);
 });
+
+test('the loopback /restore route restores a journaled removal', async (t) => {
+  const workspace = makeWorkspace(t);
+  const file = join(workspace, 'route-restore.txt');
+  writeFileSync(file, 'route payload');
+  const record = join(workspace, '$Ifake5');
+  const payload = join(workspace, '$Rfake5');
+  writeFileSync(record, '');
+  writeFileSync(payload, 'route payload');
+  const service = createRecycleService({
+    runRecycles: async (paths) => {
+      for (const path of paths) rmSync(path, { force: true });
+      return { results: paths.map((path) => ({ path, code: 0 })) };
+    },
+    verify: () => true,
+    locate: () => record,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  await post(url, grant.token, { paths: [file] });
+  const restored = await fetch(`${url}/restore`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-dsh-recycle-token': grant.token },
+    body: JSON.stringify({ paths: [file] }),
+  });
+  assert.equal(restored.status, 200);
+  const body = await restored.json();
+  assert.equal(body.results[0].ok, true);
+  assert.equal(readFileSync(file, 'utf8'), 'route payload');
+  assert.equal(service.journal.length, 0);
+});
+
+test('the /restore route refuses a path this session never deleted and needs a token', async (t) => {
+  const workspace = makeWorkspace(t);
+  const never = join(workspace, 'never.txt');
+  writeFileSync(never, 'x');
+  const service = createRecycleService({ runRecycles: async () => ({ results: [] }) });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  const refused = await fetch(`${url}/restore`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-dsh-recycle-token': grant.token },
+    body: JSON.stringify({ paths: [never] }),
+  });
+  assert.equal(refused.status, 200);
+  const body = await refused.json();
+  assert.equal(body.results[0].ok, false);
+  assert.match(body.results[0].detail, /no removal of this path was recorded/);
+  const anonymous = await fetch(`${url}/restore`, { method: 'POST', body: JSON.stringify({ paths: [never] }) });
+  assert.equal(anonymous.status, 401);
+});

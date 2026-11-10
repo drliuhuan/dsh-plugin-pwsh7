@@ -126,7 +126,7 @@ that space was reclaimed and the model is told not to empty the Recycle Bin unle
 
 **Restore.** The bridge journals every removal it verified (original path, `$I`/`$R` pair, type and
 size; in memory, bounded, cleared when DSH stops). `shell_router` action `restore` with a path puts
-one of those items back — a same-volume rename of the `$R` payload, so timestamps, attributes and a
+one of those items back, and the same loopback endpoint answers `POST /restore` with the same token — a same-volume rename of the `$R` payload, so timestamps, attributes and a
 whole tree return untouched; the `$I` record is removed and the result is verified. This is
 deliberately narrow: only items **this session** recycled through the `pwsh` tool can be restored.
 After a DSH restart, or for deletions made by a script, a native API, or outside DSH (all of which
