@@ -40,7 +40,7 @@ test('the basic rules state the Recycle-Bin contract and the forbidden bypasses'
   assert.match(prompt, /script or a native API/);
   assert.match(prompt, /delete it themselves in Explorer/);
   assert.match(prompt, /user-approved script deletions/);
-  assert.match(prompt, /cannot be restored by DSH/);
+  assert.match(prompt, /cannot bypass inspection/);
   assert.doesNotMatch(prompt, /dialect/i);
   assert.equal(buildBasicRulesPrompt(), BASIC_RULES.join(' '));
 });
@@ -50,7 +50,7 @@ test('the disclosed prompt cost matches the paragraph', () => {
   assert.equal(sizes.chars, buildBasicRulesPrompt().length);
   assert.equal(sizes.tokens, Math.ceil(sizes.chars / 4));
   // The README, CHANGELOG and status line disclose this exact figure; keep them in sync.
-  assert.equal(sizes.tokens, 596);
+  assert.equal(sizes.tokens, 561);
 });
 
 test('removal commands are detected, unrelated words are not', () => {
@@ -174,6 +174,18 @@ test('commands that empty the bin or delete permanently are refused before the s
     ['[System.IO.File]::Delete("D:\\x.txt")', /permanently/],
     ['[System.IO.Directory]::Delete("D:\\x")', /permanently/],
     ['pwsh -Command "del x"', /nested shell/],
+    ['pwsh -Command "rm x"', /nested shell/],
+    ['powershell -Command "ri x"', /nested shell/],
+    ['cmd /k "del x & exit"', /delete permanently/],
+    ['[IO.File]::Delete("x")', /permanently/],
+    ['[ IO.Directory ] :: Delete("x")', /permanently/],
+    ['(Get-Item ./victim.txt).Delete()', /permanently/],
+    ['node -e "require(\'fs\').unlinkSync(\'victim.txt\')"', /runtime deletion/],
+    ['python -c "import os; os.remove(\'victim.txt\')"', /runtime deletion/],
+    ["$c = 'Remove-' + 'Item'; & $c ./victim.txt", /dynamic command/],
+    ['pwsh -EncodedCommand AAAA', /encoded nested/],
+    ['powershell -enc AAAA', /encoded nested/],
+    ['iex $code', /dynamic code/],
     ['powershell.exe -Command "Clear-RecycleBin"', /Recycle Bin is forbidden|nested shell/],
   ];
   for (const [command, expected] of refused) {

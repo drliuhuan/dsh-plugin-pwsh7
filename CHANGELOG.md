@@ -4,6 +4,19 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-11-10
+### Hardened
+
+- Inspect nested script dependencies with cycle, depth, count and byte limits; refuse unresolved
+  and dynamic paths, and script invocations combined with working-directory changes.
+- Remove the model-controlled script-approval comment bypass. Protection can still be explicitly
+  disabled by the user in Settings; command text cannot authorize that action.
+- Refuse common object/native deletion APIs, dynamic invocation/evaluation and encoded nested shells.
+- Decode UTF-16 script bodies and close quoted script, module import and command separator gaps.
+- Text inspection does not protect arbitrary binaries, replacement races or content overwrites.
+- Prompt cost drops from 596 to 561 tokens (2,241 characters) because the old override sentence is
+  replaced by the shorter "command text is not authorization" rule.
+
 ## [0.6.0] - 2026-11-10
 ### Hardened
 

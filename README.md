@@ -86,9 +86,10 @@ The model-facing `shell_router` tool:
 
 ### Basic rules (always on): deletions go to the Recycle Bin
 
-Unlike the dialect guidance below, the **basic rules are mandatory and cannot be turned off**. They
-are not part of the opt-in prompt layer, they stay active in every route (including the forced
-`pwsh5` route), and they cost about **596 tokens on every request** (2,382 characters).
+Unlike the dialect guidance below, the **basic rules are on by default** — they are dropped only
+while the user turns Deletion protection off in Settings. They are not part of the opt-in prompt
+layer, they stay active in every route (including the forced `pwsh5` route), and they cost about
+**561 tokens on every request** (2,241 characters) while enabled.
 
 Two levers enforce one contract — removed files and directories must be recoverable:
 
@@ -171,10 +172,13 @@ the text guard, and this check applies in every sandbox mode. Scripts that canno
 larger than 2 MB, are refused rather than run uninspected. A script created and executed inside the
 same command remains a documented gap.
 
-If the user **explicitly asks** for such a script to run, the model may put the line
-`# dsh-pwsh7: user-approved script deletions` at the top of the command: the scan is skipped for
-that command and it carries a visible warning that whatever the script deletes is gone permanently
-and cannot be restored by DSH. The marker never unlocks the forbidden direct commands.
+Command comments (including the old `# dsh-pwsh7: user-approved script deletions` marker)
+never authorize a bypass. Script dependencies are inspected recursively, with cycle and size/depth
+limits. Missing scripts, dynamic script paths and script execution combined with a directory change
+are refused. Use a separate command with an explicit working directory and perform removals through
+`Remove-Item`. Common native deletion APIs, dynamic evaluation/invocation and encoded nested
+PowerShell commands are also refused. This remains a best-effort text guard, not a security boundary:
+arbitrary binaries, script replacement races, and content overwrites require separate protection.
 
 These refusals — protected locations, over-long paths, a disabled or too-small Recycle Bin, the
 forbidden command forms, and volumes without a Recycle Bin (network, removable, optical or non-NTFS)
@@ -193,7 +197,7 @@ it. `shell_router status` reports the rule and its prompt cost.
 ### Model guidance (PowerShell 7 dialect)
 
 The **dialect layer** is opt-in and off by default (upgrading never starts spending its prompt
-tokens; the always-on basic rules above are separate and cost about 596 tokens (2,382 characters).
+tokens; the always-on basic rules above are separate and cost about 561 tokens (2,241 characters).
 Two levels are available in the **setup dialog** (when PowerShell 7 is missing) and in
 **Settings → PowerShell 7 → Prompt guidance**; the choice is stored as `dialect` in `config.json` and
 takes effect on the next model step without a restart.

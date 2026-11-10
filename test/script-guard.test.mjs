@@ -59,7 +59,7 @@ test('relative references resolve against the workdir, quoted paths with spaces 
 test('a command without script references or with a missing one is not refused', (t) => {
   const dir = makeDir(t);
   assert.equal(scriptRefusalReason('Get-ChildItem', dir), null);
-  assert.equal(scriptRefusalReason('cmd /c missing.cmd', dir), null);
+  assert.match(scriptRefusalReason('cmd /c missing.cmd', dir), /cannot be located/);
 });
 
 test('Clear-RecycleBin inside a script is refused', (t) => {
@@ -88,9 +88,62 @@ test('a command that merely mentions a script file is not refused', (t) => {
   assert.deepEqual(executedScriptReferences(`cmd /c "${script}"`), [script]);
   assert.deepEqual(executedScriptReferences(`. "${script}"`), [script]);
 });
-test('the explicit user-approved override marker is recognized', () => {
-  assert.equal(scriptOverrideRequested(`# dsh-pwsh7: user-approved script deletions\ncmd /c "${'${'}'}script"`), true);
+test('command text never grants a script inspection bypass', () => {
+  assert.equal(scriptOverrideRequested(`# dsh-pwsh7: user-approved script deletions\ncmd /c "${'${'}'}script"`), false);
   assert.equal(scriptOverrideRequested('cmd /c cleanup.cmd'), false);
   assert.equal(scriptOverrideRequested(undefined), false);
   assert.equal(SCRIPT_OVERRIDE_MARKER, '# dsh-pwsh7: user-approved script deletions');
+  assert.equal(scriptOverrideRequested(`Write-Output '${SCRIPT_OVERRIDE_MARKER}'`), false);
+});
+
+test('nested scripts are inspected recursively with cycle and depth protection', (t) => {
+  const dir = makeDir(t);
+  writeFileSync(join(dir, 'outer.ps1'), '. ./inner.ps1');
+  writeFileSync(join(dir, 'inner.ps1'), '[ IO.File ] :: Delete("victim.txt")');
+  assert.match(scriptRefusalReason('./outer.ps1', dir), /inner.ps1.*permanently/);
+  writeFileSync(join(dir, 'inner.ps1'), '. ./outer.ps1');
+  assert.equal(scriptRefusalReason('./outer.ps1', dir), null, 'cycles terminate');
+  for (let i = 0; i < 36; i++) writeFileSync(join(dir, `chain${i}.ps1`), `. ./chain${i + 1}.ps1`);
+  assert.match(scriptRefusalReason('./chain0.ps1', dir), /limit exceeded/);
+});
+
+test('directory changes and dynamic script paths cannot silently bypass inspection', (t) => {
+  const dir = makeDir(t);
+  writeFileSync(join(dir, 'outer.ps1'), 'Set-Location ./sub; ./inner.ps1');
+  assert.match(scriptRefusalReason('./outer.ps1', dir), /working-directory change/);
+  assert.match(scriptRefusalReason('cd ./sub; ./inner.ps1', dir), /working-directory change/);
+  assert.match(scriptRefusalReason('& "$env:TEMP/inner.ps1"', dir), /dynamic script paths/);
+  assert.match(scriptRefusalReason('./missing.ps1', dir), /cannot be located/);
+});
+
+test('execution positions inspect single quotes, separators and imported modules', (t) => {
+  const dir = makeDir(t);
+  writeFileSync(join(dir, 'cleanup.ps1'), 'Remove-Item ./victim.txt');
+  writeFileSync(join(dir, 'cleanup.psm1'), 'Remove-Item ./victim.txt');
+  for (const command of [
+    "& './cleanup.ps1'", ". './cleanup.ps1'", "  & './cleanup.ps1'",
+    'Write-Output start; ./cleanup.ps1', 'Write-Output start\n./cleanup.ps1',
+    "Import-Module './cleanup.psm1'", 'Import-Module -Name ./cleanup.psm1',
+    "pwsh -File './cleanup.ps1'",
+  ]) {
+    assert.match(scriptRefusalReason(command, dir), /removal command/, command);
+  }
+  assert.deepEqual(executedScriptReferences("& './cleanup.ps1'"), ['./cleanup.ps1']);
+  assert.equal(scriptRefusalReason("Get-Content './cleanup.ps1'", dir), null);
+});
+
+test('UTF-16 scripts are decoded before inspection and unknown NUL encodings fail closed', (t) => {
+  const dir = makeDir(t);
+  const file = join(dir, 'cleanup.ps1');
+  const body = Buffer.from('Remove-Item ./victim.txt', 'utf16le');
+  for (const bytes of [
+    Buffer.concat([Buffer.from([255, 254]), body]),
+    Buffer.concat([Buffer.from([254, 255]), Buffer.from(body).swap16()]),
+    body,
+  ]) {
+    writeFileSync(file, bytes);
+    assert.match(scriptRefusalReason(`pwsh -File "${file}"`, dir), /removal command|encoding/);
+  }
+  writeFileSync(file, Buffer.concat([Buffer.from([255, 254]), Buffer.from('Write-Output hello', 'utf16le')]));
+  assert.equal(scriptRefusalReason(`pwsh -File "${file}"`, dir), null);
 });
