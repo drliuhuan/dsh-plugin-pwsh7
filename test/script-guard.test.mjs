@@ -77,6 +77,22 @@ test('the reference scanner and content scanner stay narrow enough', () => {
   assert.equal(destructiveScriptContent('format C: /q'), null);
 });
 
+test('PATH launchers are resolved; only local scripts are cwd-sensitive', (t) => {
+  const dir = makeDir(t);
+  const bin = join(dir, 'bin');
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, 'tool.cmd'), '@echo off\r\necho hi\r\n');
+  const previousPath = process.env.PATH;
+  process.env.PATH = `${bin};${previousPath ?? ''}`;
+  t.after(() => { process.env.PATH = previousPath; });
+  assert.equal(scriptRefusalReason('tool.cmd --version', dir), null);
+  // A PATH launcher is unaffected by a directory change and must not trip the cwd rule.
+  assert.equal(scriptRefusalReason('Set-Location sub; tool.cmd run', dir), null);
+  // But a PATH launcher with a deletion body is still inspected and refused.
+  writeFileSync(join(bin, 'bad.cmd'), 'del /f /q x\r\n');
+  assert.match(scriptRefusalReason('bad.cmd', dir), /removal command/);
+});
+
 test('a command that merely mentions a script file is not refused', (t) => {
   const dir = makeDir(t);
   const script = join(dir, 'cleanup.cmd');
@@ -110,6 +126,8 @@ test('nested scripts are inspected recursively with cycle and depth protection',
 test('directory changes and dynamic script paths cannot silently bypass inspection', (t) => {
   const dir = makeDir(t);
   writeFileSync(join(dir, 'outer.ps1'), 'Set-Location ./sub; ./inner.ps1');
+  // The targeted script has to exist for the cwd rule to matter: a missing script is refused anyway.
+  writeFileSync(join(dir, 'inner.ps1'), 'Write-Output hi');
   assert.match(scriptRefusalReason('./outer.ps1', dir), /working-directory change/);
   assert.match(scriptRefusalReason('cd ./sub; ./inner.ps1', dir), /working-directory change/);
   assert.match(scriptRefusalReason('& "$env:TEMP/inner.ps1"', dir), /dynamic script paths/);

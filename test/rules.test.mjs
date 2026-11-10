@@ -193,7 +193,15 @@ test('commands that empty the bin or delete permanently are refused before the s
     assert.ok(reason !== null, command);
     assert.match(reason, expected);
   }
-  for (const command of ['Get-ChildItem', 'Remove-Item -LiteralPath x.txt', 'echo "del is forbidden"']) {
+  for (const command of [
+    'Get-ChildItem',
+    'Remove-Item -LiteralPath x.txt',
+    'echo "del is forbidden"',
+    // Method calls and regex anchors used to be mistaken for a dynamic invocation.
+    'console.log(1)',
+    "$items.Where({ $_.x }).Count",
+    "Select-String -Pattern '\\.(json|md)$'",
+  ]) {
     assert.equal(destructiveCommandReason(command), null, command);
   }
 });

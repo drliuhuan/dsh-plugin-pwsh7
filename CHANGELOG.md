@@ -4,6 +4,19 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.2] - 2026-11-10
+### Fixed
+
+- `npm.cmd`, `pnpm.cmd` and other PATH launchers are resolved through PATH/PATHEXT before
+  inspection, so running the package manager through `pwsh` is no longer refused as a missing
+  script; a launcher whose file really deletes is still inspected and refused.
+- The working-directory rule only refuses a script that actually sits in the workdir, so
+  `Set-Location x; npm.cmd test` is allowed while `cd x; ./inner.ps1` stays refused.
+- The dynamic-invocation rule no longer mistakes ordinary method calls (`console.log(...)`) or
+  regex anchors (`'\.(json|md)$'`) for `& $x` / `. (expr)`.
+- 0.6.1 over-blocked: it refused any command containing a method call or a `.$`/`. (` sequence and
+  every `npm.cmd` invocation. 0.6.2 restores those while keeping the intended refusals.
+
 ## [0.6.1] - 2026-11-10
 ### Hardened
 

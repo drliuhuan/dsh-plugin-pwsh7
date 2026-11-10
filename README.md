@@ -177,8 +177,10 @@ never authorize a bypass. Script dependencies are inspected recursively, with cy
 limits. Missing scripts, dynamic script paths and script execution combined with a directory change
 are refused. Use a separate command with an explicit working directory and perform removals through
 `Remove-Item`. Common native deletion APIs, dynamic evaluation/invocation and encoded nested
-PowerShell commands are also refused. This remains a best-effort text guard, not a security boundary:
-arbitrary binaries, script replacement races, and content overwrites require separate protection.
+PowerShell commands are also refused. Bare launcher names (`npm.cmd`, `pnpm.cmd`) are resolved
+through PATH and their real file is inspected, so running the package manager through the tool
+stays possible. This remains a best-effort text guard, not a security boundary: arbitrary binaries,
+script replacement races, and content overwrites require separate protection.
 
 These refusals — protected locations, over-long paths, a disabled or too-small Recycle Bin, the
 forbidden command forms, and volumes without a Recycle Bin (network, removable, optical or non-NTFS)
