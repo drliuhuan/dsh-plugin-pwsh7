@@ -333,6 +333,7 @@ test('route table names the eleven exact setup/maintenance routes', () => {
     SETUP_ROUTES.uninstall,
     SETUP_ROUTES.relocate,
     SETUP_ROUTES.selfcheck,
+    SETUP_ROUTES.deletionGuard,
   ]);
   assert.ok(rows.every((row) => row.kind === 'exact'));
 });
@@ -403,6 +404,7 @@ test('installRouterFeatures wires the prompt and routes from the executor row', 
     SETUP_ROUTES.uninstall,
     SETUP_ROUTES.relocate,
     SETUP_ROUTES.selfcheck,
+    SETUP_ROUTES.deletionGuard,
   ]);
 });
 
