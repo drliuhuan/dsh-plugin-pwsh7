@@ -141,7 +141,8 @@ session workspace root itself. Descendants of the user profile stay allowed (a w
 under the home directory), and ordinary files and folders inside the workspace are unaffected. The
 refusal reaches the command as an explicit error: nothing is deleted. These refusals — protected
 locations, over-long paths, a disabled or too-small Recycle Bin, and the forbidden command forms
-(Clear-RecycleBin, cmd /c del, .NET Delete, nested shells) — are applied before and
+(Clear-RecycleBin, cmd /c del, .NET Delete, nested shells), and volumes that have no Recycle
+Bin at all (network, removable, optical or non-NTFS volumes) — are applied before and
 independently of the sandbox mode, so they hold under danger-full-access too.
 
 The guard is a command-text layer, so a deliberately obfuscated invocation of the stock cmdlet
