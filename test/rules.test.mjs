@@ -113,16 +113,23 @@ test('commands without a removal command are passed through untouched', () => {
   assert.equal(guardRemoval(empty), empty);
 });
 
-test('the prelude shadows Remove-Item and recycles every FileSystem target', () => {
+test('the prelude routes every FileSystem target through the host recycle bridge', () => {
   assert.match(RECYCLE_GUARD_PRELUDE, /function Remove-Item \{/);
   assert.match(RECYCLE_GUARD_PRELUDE, /CmdletBinding\(SupportsShouldProcess = \$true/);
-  assert.match(RECYCLE_GUARD_PRELUDE, /\[Microsoft\.VisualBasic\.FileIO\.FileSystem\]::DeleteFile/);
-  assert.match(RECYCLE_GUARD_PRELUDE, /\[Microsoft\.VisualBasic\.FileIO\.FileSystem\]::DeleteDirectory/);
-  assert.equal(RECYCLE_GUARD_PRELUDE.split('SendToRecycleBin').length - 1, 2);
-  assert.match(RECYCLE_GUARD_PRELUDE, /Shell\.Application/);
-  assert.match(RECYCLE_GUARD_PRELUDE, /NameSpace\(10\)\.MoveHere/);
+  // The recycle happens in the host process; this one only asks (write-restricted token).
+  assert.match(RECYCLE_GUARD_PRELUDE, /DSH_PWSH7_RECYCLE_URL/);
+  assert.match(RECYCLE_GUARD_PRELUDE, /DSH_PWSH7_RECYCLE_TOKEN/);
+  assert.match(RECYCLE_GUARD_PRELUDE, /Invoke-RestMethod/);
+  assert.match(RECYCLE_GUARD_PRELUDE, /x-dsh-recycle-token/);
   assert.match(RECYCLE_GUARD_PRELUDE, /Microsoft\.PowerShell\.Management\\Remove-Item/);
   assert.match(RECYCLE_GUARD_PRELUDE, /nothing was deleted permanently/);
+  // The confined process must not attempt a recycle itself: those APIs cannot write the bin
+  // under the write-restricted token, and the shell then deletes permanently while reporting
+  // success (measured). No in-process fallback may remain.
+  assert.doesNotMatch(RECYCLE_GUARD_PRELUDE, /Microsoft\.VisualBasic/);
+  assert.doesNotMatch(RECYCLE_GUARD_PRELUDE, /SendToRecycleBin/);
+  assert.doesNotMatch(RECYCLE_GUARD_PRELUDE, /Shell\.Application/);
+  assert.doesNotMatch(RECYCLE_GUARD_PRELUDE, /NameSpace\(10\)/);
   // No fallback may ever delete permanently, and no stock alias is redefined.
   assert.doesNotMatch(RECYCLE_GUARD_PRELUDE, /\[System\.IO\.File\]::Delete/);
   assert.doesNotMatch(RECYCLE_GUARD_PRELUDE, /\[System\.IO\.Directory\]::Delete/);
@@ -132,6 +139,19 @@ test('the prelude shadows Remove-Item and recycles every FileSystem target', () 
 test('the executor guards before delegating and hints the original command', () => {
   const source = fs.readFileSync(new URL('../lib/executors/pwsh.mjs', import.meta.url), 'utf8');
   assert.match(source, /guardRemoval/);
-  assert.match(source, /super\.execute\(guarded\)/);
+  assert.match(source, /super\.run\(prepared\)/);
+  assert.match(source, /super\.execute\(prepared\)/);
+  assert.match(source, /super\.start\(prepared\)/);
+  assert.match(source, /createRecycleService/);
+  assert.match(source, /RECYCLE_URL_ENV/);
+  assert.match(source, /RECYCLE_TOKEN_ENV/);
+  // The channel that actually reaches the child: the trusted shellEnv registry snapshot.
+  assert.match(source, /static inject = \[[^\]]*'shellEnv'/);
+  assert.match(source, /pwsh7-recycle-bridge/);
+  assert.match(source, /shellEnv\.register/);
+  // The bridge must be listening before the first guarded command runs.
+  assert.match(source, /_recycle\.start\(\)/);
+  // No ES private members: a Proxy receiver fails the brand check and takes the tool down.
+  assert.doesNotMatch(source, /#[a-z]+\(/);
   assert.match(source, /attachDialectHint\(handle, spec\?\.command\)/);
 });

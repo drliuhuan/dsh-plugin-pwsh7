@@ -86,10 +86,13 @@ plugin_manager action=install_bundle target=D:\path\to\dsh-plugin-pwsh7
 2. **执行器守卫。** 当 `pwsh` 命令涉及删除时，执行器会在命令前注入一小段前置定义，遮蔽
    `Remove-Item`（原性别名解析到同一个函数），并把模块限定写法
    `Microsoft.PowerShell.Management\Remove-Item` 改写为被重定向的命令，避免它绕过遮蔽。
-   所有文件系统目标都通过 `Microsoft.VisualBasic.FileIO.FileSystem`（`SendToRecycleBin`）
-   移入回收站；若该路径不可用，回退到 `Shell.Application` 的回收站（`NameSpace(10).MoveHere`）。
-   **没有永久删除回退**：两条回收站路径都失败时命令直接报错，且不会删除任何东西。
-   非文件系统 provider（注册表、环境变量、证书等）仍通过模块限定名走原 cmdlet。
+   所有文件系统目标都交给**宿主侧回收桥**（`lib/recycle-service.mjs`）：受限进程只把路径
+   POST 给 DSH 宿主进程里的回环接口，由宿主执行
+   `SHFileOperation(FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI)`，再**核对
+   该卷回收站里的 `$I` 记录**。这层间接是必需的：在写受限令牌下，进程内任何回收 API 都写不进
+   `<卷>:\$RECYCLE.BIN`；本机实测 `SHFileOperation` 会在此情况下永久删除文件却仍返回 0——所以
+   返回码本身绝不作为成功依据。**没有永久删除回退**：桥不可用或无法核实时命令直接报错，且不会
+   删除任何东西。非文件系统 provider（注册表、环境变量、证书等）仍通过模块限定名走原 cmdlet。
 
 守卫需要真实路径而不是筛选器，因此 `Remove-Item` 会拒绝 `-Filter`、`-Include`、`-Exclude`、
 `-Stream` 和 `-Credential`；请用 `Get-ChildItem … | Remove-Item` 选择条目。`-WhatIf`/`-Confirm`

@@ -100,12 +100,17 @@ Two levers enforce one contract — removed files and directories must be recove
 2. **Executor guard.** When a `pwsh` command mentions a removal command, the executor prepends a
    small prelude that shadows `Remove-Item` (the stock aliases resolve to the same function), and it
    rewrites the stock module-qualified `Microsoft.PowerShell.Management\Remove-Item` spelling to the
-   redirected command so that form cannot slip past the shadow. Every FileSystem target is moved to
-   the Recycle Bin through `Microsoft.VisualBasic.FileIO.FileSystem` (`SendToRecycleBin`), with a
-   `Shell.Application` Recycle-Bin fallback (`NameSpace(10).MoveHere`). There is **no
-   permanent-delete fallback**: if both routes fail, the command fails with an explicit error and
-   nothing is deleted. Non-FileSystem providers (registry, environment variables, certificates, …)
-   keep their stock behavior through the module-qualified cmdlet.
+   redirected command so that form cannot slip past the shadow. Every FileSystem target is recycled
+   by the **host-side bridge** (`lib/recycle-service.mjs`): the confined command only posts the path
+   to a loopback endpoint in the DSH host, which runs `SHFileOperation` with
+   `FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI` and then **verifies the
+   volume's `$I` record**. The indirection is required, not decorative: under the write-restricted
+   token no in-process recycle API can write `<volume>\$RECYCLE.BIN`, and measured on this
+   deployment `SHFileOperation` then deletes the file permanently while still returning 0 — so the
+   return code alone is never trusted. There is **no permanent-delete fallback**: if the bridge is
+   missing or cannot confirm the record, the command fails with an explicit error and nothing is
+   deleted. Non-FileSystem providers (registry, environment variables, certificates, …) keep their
+   stock behavior through the module-qualified cmdlet.
 
 The guard needs file paths rather than selectors, so `Remove-Item` refuses `-Filter`, `-Include`,
 `-Exclude`, `-Stream` and `-Credential`; select items with `Get-ChildItem … | Remove-Item` instead.

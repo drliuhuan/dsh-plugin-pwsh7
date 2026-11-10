@@ -1,16 +1,18 @@
 // test/prelude.test.mjs — parse and behavior checks for the Recycle-Bin prelude against a real
-// PowerShell 7. The file skips itself when no `pwsh` is on PATH (the pure contract is covered by
-// test/rules.test.mjs). The default cases use -WhatIf / non-file-system providers only, so the
-// suite stays side-effect free; the single real-recycle test is opt-in (DSH_PWSH7_TEST_RECYCLE=1)
-// and Windows-only.
+// PowerShell 7. The file skips itself when no `pwsh` on PATH (the pure contract is covered by
+// test/rules.test.mjs). Default cases use -WhatIf, non-file-system providers, or a throwaway fake
+// bridge, so the suite stays side-effect free; the one real-recycle test is opt-in
+// (DSH_PWSH7_TEST_RECYCLE=1, unconfined process) and Windows-only.
 // Run with: node --test test/prelude.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { createRecycleService } from '../lib/recycle-service.mjs';
 import { RECYCLE_GUARD_PRELUDE } from '../lib/rules.mjs';
 
 function findPwsh() {
@@ -38,6 +40,33 @@ function runWithPrelude(script) {
     timeout: 60_000,
     windowsHide: true,
   });
+}
+
+/** Async variant: the bridge (an in-process HTTP server) needs the event loop to stay free. */
+function runPreludeAsync(script, env = {}) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(pwsh, ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', `${RECYCLE_GUARD_PRELUDE}\n${script}`], {
+      windowsHide: true,
+      env: { ...process.env, ...env },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (status) => resolvePromise({ status, stdout, stderr }));
+  });
+}
+
+/** The bridge starts listening asynchronously; wait for its origin, then issue a grant. */
+async function waitForGrant(service, workspaceRoot) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (service.url !== undefined) return service.grant(workspaceRoot);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+  }
+  return null;
 }
 
 function makeTemp(t) {
@@ -114,25 +143,108 @@ test('the prelude keeps non-FileSystem providers on the stock cmdlet', {
 
 test('the prelude actually recycles a file to the Recycle Bin (opt-in, Windows only)', {
   skip: process.platform !== 'win32' || process.env.DSH_PWSH7_TEST_RECYCLE !== '1'
-    ? 'set DSH_PWSH7_TEST_RECYCLE=1 on Windows to exercise the real Recycle-Bin path'
+    ? 'set DSH_PWSH7_TEST_RECYCLE=1 on Windows, from an UNCONFINED process, to exercise the real Recycle-Bin path'
     : false,
-}, (t) => {
-  // The one test that deletes through Windows: the file must leave its path with exit code 0 and
-  // must not be permanently deleted (the Recycle-Bin APIs are the only implementation in play).
+}, async (t) => {
+  // The recycle is the host bridge's job (lib/recycle-service.mjs); this exercises the whole
+  // chain end to end. It must run UNCONFINED — inside the write-restricted sandbox the helper's
+  // recycle cannot write the bin, which is exactly the case the bridge reports as a failure.
   const directory = makeTemp(t);
   const name = `dsh-recycled-${process.pid}-${Date.now()}.txt`;
   const file = path.join(directory, name);
   fs.writeFileSync(file, 'x');
-  const result = runWithPrelude(`Remove-Item -LiteralPath '${file.replace(/'/g, "''")}'`);
+  const service = createRecycleService({ pwshPath: pwsh });
+  t.after(() => service.close());
+  service.start();
+  const grant = await waitForGrant(service, directory);
+  assert.ok(grant !== null, 'the bridge must be listening');
+  const result = await runPreludeAsync(`Remove-Item -LiteralPath '${file.replace(/'/g, "''")}'`, {
+    DSH_PWSH7_RECYCLE_URL: grant.url,
+    DSH_PWSH7_RECYCLE_TOKEN: grant.token,
+  });
   assert.equal(result.status, 0, result.stderr);
   assert.equal(fs.existsSync(file), false, 'the recycled file left its path');
-  const parent = runWithPrelude([
+  const bin = runWithPrelude([
     '$shell = New-Object -ComObject Shell.Application',
     '$bin = $shell.NameSpace(10)',
     `Write-Output ("in-bin=" + [bool]($bin.Items() | Where-Object { $_.Name -eq '${name}' } | Select-Object -First 1))`,
   ].join('\n'));
-  assert.equal(parent.status, 0, parent.stderr);
-  assert.match(parent.stdout, /in-bin=True/, 'the file is recoverable from the Recycle Bin');
+  assert.equal(bin.status, 0, bin.stderr);
+  assert.match(bin.stdout, /in-bin=True/, 'the file is recoverable from the Recycle Bin');
+});
+
+test('the prelude asks the host bridge and never recycles in-process', {
+  skip: pwsh === null ? 'no pwsh on PATH' : false,
+}, async (t) => {
+  const directory = makeTemp(t);
+  const file = path.join(directory, 'bridged.txt');
+  fs.writeFileSync(file, 'x');
+  const seen = [];
+  const server = http.createServer((request, response) => {
+    let body = '';
+    request.on('data', (chunk) => { body += chunk; });
+    request.on('end', () => {
+      seen.push({ url: request.url, token: request.headers['x-dsh-recycle-token'], body: JSON.parse(body) });
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ results: [{ path: file, ok: true, code: 0, detail: '' }] }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+
+  const result = await runPreludeAsync(`Remove-Item -LiteralPath '${file.replace(/'/g, "''")}'`, {
+    DSH_PWSH7_RECYCLE_URL: `http://127.0.0.1:${port}`,
+    DSH_PWSH7_RECYCLE_TOKEN: 'test-token',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(seen.length, 1, 'exactly one bridge request');
+  assert.equal(seen[0].url, '/recycle');
+  assert.equal(seen[0].token, 'test-token');
+  assert.deepEqual(seen[0].body, { paths: [file] });
+  assert.ok(fs.existsSync(file), 'the fake bridge did not delete anything');
+});
+
+test('the prelude fails closed when the bridge reports the recycle was not confirmed', {
+  skip: pwsh === null ? 'no pwsh on PATH' : false,
+}, async (t) => {
+  const directory = makeTemp(t);
+  const file = path.join(directory, 'refused.txt');
+  fs.writeFileSync(file, 'x');
+  const server = http.createServer((request, response) => {
+    request.resume();
+    request.on('end', () => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ results: [{ path: file, ok: false, code: 0, detail: 'no Recycle Bin record was written' }] }));
+    });
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+
+  const result = await runPreludeAsync(`Remove-Item -LiteralPath '${file.replace(/'/g, "''")}'`, {
+    DSH_PWSH7_RECYCLE_URL: `http://127.0.0.1:${port}`,
+    DSH_PWSH7_RECYCLE_TOKEN: 'test-token',
+  });
+  assert.notEqual(result.status, 0, 'an unconfirmed recycle must fail the command');
+  assert.match(`${result.stdout}\n${result.stderr}`, /no Recycle Bin record was written/);
+  assert.match(`${result.stdout}\n${result.stderr}`, /nothing was deleted permanently/);
+  assert.ok(fs.existsSync(file), 'a failed bridge answer must not delete anything');
+});
+
+test('the prelude refuses to delete when the bridge is not available', {
+  skip: pwsh === null ? 'no pwsh on PATH' : false,
+}, async (t) => {
+  const directory = makeTemp(t);
+  const file = path.join(directory, 'no-bridge.txt');
+  fs.writeFileSync(file, 'x');
+  const result = await runPreludeAsync(`Remove-Item -LiteralPath '${file.replace(/'/g, "''")}'`, {
+    DSH_PWSH7_RECYCLE_URL: '',
+    DSH_PWSH7_RECYCLE_TOKEN: '',
+  });
+  assert.notEqual(result.status, 0, 'without the bridge the command must fail');
+  assert.match(`${result.stdout}\n${result.stderr}`, /not available in this process/);
+  assert.ok(fs.existsSync(file), 'fail closed means the file stays');
 });
 
 test('the prelude refuses selectors instead of recycling the wrong target', {

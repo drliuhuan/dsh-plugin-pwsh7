@@ -4,6 +4,50 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-11-10
+
+### Fixed
+
+- **`Remove-Item` now really reaches the Recycle Bin under `workspace-write` confinement.** The
+  shipped implementation recycled in-process (`Microsoft.VisualBasic.FileIO.FileSystem`, then
+  `Shell.Application.NameSpace(10).MoveHere`) and treated "the item left its path" as success.
+  Measured on a sandboxed session: the write-restricted token's write SID is granted the workspace
+  and a private temp directory only — never `<volume>\$RECYCLE.BIN` — so every in-process recycle
+  API was denied, Windows fell back to deleting the file permanently, and `SHFileOperation`
+  returned **0** while writing no bin record. Reinstalling a plugin then failed with
+  `ERR_PNPM_EPERM` because the deleted file's junction survived, and users were silently losing
+  data behind a "recycle" that never happened.
+
+### Added
+
+- **Host-side recycle bridge** (`lib/recycle-service.mjs`). The confined command only posts the
+  FileSystem target to a loopback endpoint owned by the DSH host process (random port, per-command
+  token bound to the session workspace). The host runs `SHFileOperation` with
+  `FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI`, so no dialog can appear, and
+  then verifies the volume's `$I` record for that exact path. Only a verified record is reported as
+  success; a missing record, a disabled Recycle Bin (policy / `NukeOnDelete`), an item larger than
+  the volume's bin capacity, or a bridge that cannot be reached fails the command with an explicit
+  error and leaves the item in place. Works in `dsh web`, DSH Desktop and headless compositions
+  because the bridge lives in the plugin's host process, not in the web server.
+- `lib/executors/pwsh.mjs` publishes the bridge through the **`shellEnv` registry** (the trusted
+  managed-variable snapshot the pwsh tool merges last, the same channel DSH_HOME uses) and issues
+  the per-execution grant from the session's workspace root. A hand-built `spec.env`/`dshEnv`
+  overlay is kept only as a fallback: measured on the live host, those overlays did not reach the
+  child, while the registry does. The bridge listens from construction so the first command after
+  boot already has an origin. Grants expire after 15 minutes; the token is bound server-side to
+  that workspace root. The grant is refused for paths outside that workspace.
+- Executor members are public (`_`-prefixed): DSH's service seam can hand an executor's methods a
+  Proxy receiver, and ES `#private` members fail the brand check there ("Receiver must be an
+  instance of class …"), which took the whole `pwsh` tool down.
+- Tests: `test/recycle-service.test.mjs` (token authority, workspace binding, verified-vs-unverified
+  verdicts, helper failure, revocation) and new prelude cases (bridge success, unconfirmed recycle,
+  missing bridge fails closed), plus the renamed prelude sourcing test.
+
+### Changed
+
+- The prelude no longer contains any in-process recycle call. When the bridge is unavailable it
+  throws instead of attempting a recycle that the sandbox would turn into a permanent delete.
+
 ## [0.5.0] - 2026-11-10
 
 ### Added
