@@ -17,6 +17,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Over-long paths are refused instead of attempted**: measured on a 352-character path,
   `SHFileOperation` reported success, wrote no `$I` record and permanently deleted the file. Paths
   above 250 characters now fail closed, and the helper enforces the same limit.
+- **An unwritable or missing Recycle Bin is refused**: the helper probes the current user's own
+  bin directory (create + delete a zero-byte probe) before touching the item, so a volume where
+  the shell would fail or fall back to a permanent delete is rejected instead (code -6).
+- **Refusals are reported to the user**: the always-on rules now require the model to name the exact
+  path and say the user can delete it themselves in Explorer when recycling is refused (too-long
+  path, network/removable/non-NTFS volume, disabled or unwritable bin, over-quota item, protected
+  location, or a shell that could not confirm the record) — never to try another deletion method.
 - **Volumes without a Recycle Bin are refused**: a network drive / UNC share, a removable or optical
   drive, and a non-NTFS volume (FAT/exFAT/ReFS) cannot recycle — Windows deletes permanently there —
   so the helper refuses them before any operation (the volume type is probed with DriveInfo).

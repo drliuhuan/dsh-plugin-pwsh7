@@ -88,7 +88,7 @@ The model-facing `shell_router` tool:
 
 Unlike the dialect guidance below, the **basic rules are mandatory and cannot be turned off**. They
 are not part of the opt-in prompt layer, they stay active in every route (including the forced
-`pwsh5` route), and they cost about **407 tokens on every request** (1,625 characters).
+`pwsh5` route), and they cost about **506 tokens on every request** (2,021 characters).
 
 Two levers enforce one contract — removed files and directories must be recoverable:
 
@@ -139,7 +139,10 @@ volume root; anything inside — or an ancestor of — the Windows, Program File
 ProgramData or DSH-state (`~/.dsh`) trees; the user profile itself or any ancestor of it; or the
 session workspace root itself. Descendants of the user profile stay allowed (a workspace may live
 under the home directory), and ordinary files and folders inside the workspace are unaffected. The
-refusal reaches the command as an explicit error: nothing is deleted. These refusals — protected
+refusal reaches the command as an explicit error: nothing is deleted, and the model must tell the
+user the exact path so they can delete it themselves in Explorer. The Recycle Bin directory of the
+current user is also probed for writability before any operation (an unwritable or missing bin is
+refused, not attempted). These refusals — protected
 locations, over-long paths, a disabled or too-small Recycle Bin, and the forbidden command forms
 (Clear-RecycleBin, cmd /c del, .NET Delete, nested shells), and volumes that have no Recycle
 Bin at all (network, removable, optical or non-NTFS volumes) — are applied before and
@@ -157,7 +160,7 @@ it. `shell_router status` reports the rule and its prompt cost.
 ### Model guidance (PowerShell 7 dialect)
 
 The **dialect layer** is opt-in and off by default (upgrading never starts spending its prompt
-tokens; the always-on basic rules above are separate and cost about 407 tokens (1,625 characters).
+tokens; the always-on basic rules above are separate and cost about 506 tokens (2,021 characters).
 Two levels are available in the **setup dialog** (when PowerShell 7 is missing) and in
 **Settings → PowerShell 7 → Prompt guidance**; the choice is stored as `dialect` in `config.json` and
 takes effect on the next model step without a restart.
