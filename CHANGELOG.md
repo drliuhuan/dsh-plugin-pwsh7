@@ -28,6 +28,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   paths outside the session workspace (that mode exists to work on files elsewhere), while the
   protected-location, over-long-path, volume, capacity and forbidden-command refusals stay exactly
   as under `workspace-write`.
+- **A user-approved override exists for deletion scripts**: when the user explicitly asks for one,
+  the model may prefix the command with `# dsh-pwsh7: user-approved script deletions`; the scan is
+  skipped for that command and a visible warning says the deletions are permanent and cannot be
+  restored by DSH. The marker never unlocks the forbidden direct commands.
 - **Scripts are inspected before they run** (every sandbox mode): a command that runs a
   `.ps1`/`.psm1`/`.cmd`/`.bat` file is refused when the body contains a removal command; unreadable
   or over-2 MB scripts are refused too. A script generated and run inside the same command remains

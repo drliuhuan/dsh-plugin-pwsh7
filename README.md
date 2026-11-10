@@ -88,7 +88,7 @@ The model-facing `shell_router` tool:
 
 Unlike the dialect guidance below, the **basic rules are mandatory and cannot be turned off**. They
 are not part of the opt-in prompt layer, they stay active in every route (including the forced
-`pwsh5` route), and they cost about **506 tokens on every request** (2,021 characters).
+`pwsh5` route), and they cost about **596 tokens on every request** (2,382 characters).
 
 Two levers enforce one contract — removed files and directories must be recoverable:
 
@@ -150,15 +150,22 @@ no longer contains anything — while every protected location, the over-long-pa
 checks and the forbidden command forms stay refused exactly as under `workspace-write`. Under
 `workspace-write` the grant remains the session workspace.
 
-**Scripts are inspected before they run.** A command that names a script file (`.ps1`, `.psm1`,
-`.cmd`, `.bat`) is refused when the script body contains a removal command — script bodies are
-outside the text guard, and this check applies in every sandbox mode (the mode is never consulted).
-Scripts that cannot be read, or are larger than 2 MB, are refused rather than run uninspected. A
-script created and executed inside the same command remains a documented gap. These refusals — protected
-locations, over-long paths, a disabled or too-small Recycle Bin, and the forbidden command forms
-(Clear-RecycleBin, cmd /c del, .NET Delete, nested shells), and volumes that have no Recycle
-Bin at all (network, removable, optical or non-NTFS volumes) — are applied before and
-independently of the sandbox mode, so they hold under danger-full-access too.
+**Scripts are inspected before they run.** A command that *runs* a script it names (`.ps1`,
+`.psm1`, `.cmd`, `.bat` via `cmd /c`, `pwsh -File`, the call/dot-source operators, or the script in
+command position) is refused when the body contains a removal command — script bodies are outside
+the text guard, and this check applies in every sandbox mode. Scripts that cannot be read, or are
+larger than 2 MB, are refused rather than run uninspected. A script created and executed inside the
+same command remains a documented gap.
+
+If the user **explicitly asks** for such a script to run, the model may put the line
+`# dsh-pwsh7: user-approved script deletions` at the top of the command: the scan is skipped for
+that command and it carries a visible warning that whatever the script deletes is gone permanently
+and cannot be restored by DSH. The marker never unlocks the forbidden direct commands.
+
+These refusals — protected locations, over-long paths, a disabled or too-small Recycle Bin, the
+forbidden command forms, and volumes without a Recycle Bin (network, removable, optical or non-NTFS)
+— are applied before and independently of the sandbox mode, so they hold under `danger-full-access`
+too.
 
 The guard is a command-text layer, so a deliberately obfuscated invocation of the stock cmdlet
 (resolving it through a variable, a nested shell, or a .NET API) cannot be intercepted; the basic
@@ -172,7 +179,7 @@ it. `shell_router status` reports the rule and its prompt cost.
 ### Model guidance (PowerShell 7 dialect)
 
 The **dialect layer** is opt-in and off by default (upgrading never starts spending its prompt
-tokens; the always-on basic rules above are separate and cost about 506 tokens (2,021 characters).
+tokens; the always-on basic rules above are separate and cost about 596 tokens (2,382 characters).
 Two levels are available in the **setup dialog** (when PowerShell 7 is missing) and in
 **Settings → PowerShell 7 → Prompt guidance**; the choice is stored as `dialect` in `config.json` and
 takes effect on the next model step without a restart.

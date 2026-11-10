@@ -39,6 +39,8 @@ test('the basic rules state the Recycle-Bin contract and the forbidden bypasses'
   assert.match(prompt, /restart/);
   assert.match(prompt, /script or a native API/);
   assert.match(prompt, /delete it themselves in Explorer/);
+  assert.match(prompt, /user-approved script deletions/);
+  assert.match(prompt, /cannot be restored by DSH/);
   assert.doesNotMatch(prompt, /dialect/i);
   assert.equal(buildBasicRulesPrompt(), BASIC_RULES.join(' '));
 });
@@ -48,7 +50,7 @@ test('the disclosed prompt cost matches the paragraph', () => {
   assert.equal(sizes.chars, buildBasicRulesPrompt().length);
   assert.equal(sizes.tokens, Math.ceil(sizes.chars / 4));
   // The README, CHANGELOG and status line disclose this exact figure; keep them in sync.
-  assert.equal(sizes.tokens, 506);
+  assert.equal(sizes.tokens, 596);
 });
 
 test('removal commands are detected, unrelated words are not', () => {

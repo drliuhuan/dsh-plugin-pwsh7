@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
+  SCRIPT_OVERRIDE_MARKER,
   destructiveScriptContent,
+  scriptOverrideRequested,
   executedScriptReferences,
   scriptReferencesInCommand,
   scriptRefusalReason,
@@ -85,4 +87,10 @@ test('a command that merely mentions a script file is not refused', (t) => {
   assert.deepEqual(executedScriptReferences(`Remove-Item "${script}"`), []);
   assert.deepEqual(executedScriptReferences(`cmd /c "${script}"`), [script]);
   assert.deepEqual(executedScriptReferences(`. "${script}"`), [script]);
+});
+test('the explicit user-approved override marker is recognized', () => {
+  assert.equal(scriptOverrideRequested(`# dsh-pwsh7: user-approved script deletions\ncmd /c "${'${'}'}script"`), true);
+  assert.equal(scriptOverrideRequested('cmd /c cleanup.cmd'), false);
+  assert.equal(scriptOverrideRequested(undefined), false);
+  assert.equal(SCRIPT_OVERRIDE_MARKER, '# dsh-pwsh7: user-approved script deletions');
 });
