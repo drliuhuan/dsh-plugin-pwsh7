@@ -5,6 +5,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.6.0] - 2026-11-10
+### Hardened
+
+- **Destructive removals are refused by the bridge**: a volume root, anything inside or above the
+  Windows / Program Files / ProgramData / `~/.dsh` trees, the user profile itself or an ancestor of
+  it, and the session workspace root itself. Descendants of the profile stay allowed (a workspace
+  may live under it); ordinary workspace files are unaffected.
+- **Forbidden command forms never reach the shell**: `Clear-RecycleBin`, `cmd /c del|erase|rd|rmdir`,
+  `[System.IO.File]::Delete`, `[System.IO.Directory]::Delete`, and a nested `pwsh`/`powershell` that
+  mentions a removal are rejected by the executor before spawning.
+- **Over-long paths are refused instead of attempted**: measured on a 352-character path,
+  `SHFileOperation` reported success, wrote no `$I` record and permanently deleted the file. Paths
+  above 250 characters now fail closed, and the helper enforces the same limit.
+- **Huge items are refused before the shell runs**: the capacity pre-check now falls back to 5% of
+  the volume when no explicit Recycle-Bin setting exists, so an item that cannot fit is refused
+  instead of silently deleted.
+- **All of the above are mode-independent**: they run before and independently of the sandbox mode,
+  so `danger-full-access` cannot bypass them. (Script bodies remain the documented text-level gap.)
 
 ### Fixed
 

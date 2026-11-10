@@ -3,11 +3,11 @@
 // Run with: node --test test/recycle-service.test.mjs (or: node test/recycle-service.test.mjs)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { binRecordExists, createRecycleService } from '../lib/recycle-service.mjs';
+import { binRecordExists, createRecycleService, isProtectedRemoval } from '../lib/recycle-service.mjs';
 
 const makeWorkspace = (t) => {
   const directory = mkdtempSync(join(tmpdir(), 'dsh-pwsh7-bridge-'));
@@ -339,4 +339,100 @@ test('the /restore route refuses a path this session never deleted and needs a t
   assert.match(body.results[0].detail, /no removal of this path was recorded/);
   const anonymous = await fetch(`${url}/restore`, { method: 'POST', body: JSON.stringify({ paths: [never] }) });
   assert.equal(anonymous.status, 401);
+});
+test('destructive removals are refused by the bridge', async (t) => {
+  const workspace = makeWorkspace(t);
+  const home = process.env.USERPROFILE;
+  const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
+  const cases = [
+    ['volume root', 'D:\\'],
+    ['windows tree', systemRoot],
+    ['windows child', systemRoot + '\\System32\\drivers\\etc\\hosts'],
+    ['user profile', home],
+  ];
+  for (const [label, candidate] of cases) {
+    assert.equal(isProtectedRemoval(candidate, workspace), true, label);
+  }
+  // An ancestor of the profile is destructive too; a descendant is an ordinary removal.
+  assert.equal(isProtectedRemoval(process.env.SystemDrive + '\\Users', workspace), true);
+  assert.equal(isProtectedRemoval(workspace + '\\ordinary.txt', workspace), false);
+  // The workspace root itself is refused.
+  assert.equal(isProtectedRemoval(workspace, workspace), true);
+});
+
+test('the bridge refuses a granted broad workspace root itself and the profile inside it', async (t) => {
+  let called = false;
+  const service = createRecycleService({
+    runRecycles: async (paths) => { called = true; return { results: paths.map((path) => ({ path, code: 0 })) }; },
+    verify: () => true,
+    locate: () => null,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const usersRoot = (process.env.SystemDrive ?? 'C:') + '\\Users';
+  const grant = service.grant(usersRoot);
+  assert.ok(grant !== null);
+  const profile = process.env.USERPROFILE;
+  const refused = await post(url, grant.token, { paths: [profile] });
+  assert.equal(refused.status, 403);
+  assert.match((await refused.json()).error, /destructive removal/);
+  assert.equal(called, false, 'the helper must not run for a protected path');
+  const selfRefused = await post(url, grant.token, { paths: [usersRoot] });
+  assert.equal(selfRefused.status, 403);
+});
+
+test('a workspace root deletion is refused but its files are not', async (t) => {
+  const workspace = makeWorkspace(t);
+  const file = join(workspace, 'allowed.txt');
+  writeFileSync(file, 'x');
+  let called = false;
+  const service = createRecycleService({
+    runRecycles: async (paths) => { called = true; return { results: paths.map((path) => ({ path, code: 0 })) }; },
+    verify: () => true,
+    locate: () => null,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  const rootRefused = await post(url, grant.token, { paths: [workspace] });
+  assert.equal(rootRefused.status, 403);
+  assert.match((await rootRefused.json()).error, /destructive removal/);
+  const fileAllowed = await post(url, grant.token, { paths: [file] });
+  assert.equal(fileAllowed.status, 200);
+  assert.equal(called, true);
+});
+test('a path longer than the Windows shell limit is refused before any deletion', async (t) => {
+  const workspace = makeWorkspace(t);
+  let deep = workspace;
+  for (let index = 0; index < 30; index += 1) deep = join(deep, `segment-${index}`);
+  let created = false;
+  try {
+    mkdirSync(deep, { recursive: true });
+    writeFileSync(join(deep, 'leaf.txt'), 'x');
+    created = true;
+  } catch {
+    created = false;
+  }
+  if (!created) {
+    t.skip('this filesystem cannot create a path beyond MAX_PATH');
+    return;
+  }
+  const leaf = join(deep, 'leaf.txt');
+  let called = false;
+  const service = createRecycleService({
+    runRecycles: async (paths) => { called = true; return { results: paths.map((path) => ({ path, code: 0 })) }; },
+    verify: () => true,
+    locate: () => null,
+  });
+  t.after(() => service.close());
+  service.start();
+  const url = await waitForUrl(service);
+  const grant = service.grant(workspace);
+  const refused = await post(url, grant.token, { paths: [leaf] });
+  assert.equal(refused.status, 403);
+  assert.match((await refused.json()).error, /path too long/);
+  assert.equal(called, false, 'the helper must not run for a long path');
+  assert.equal(existsSync(leaf), true, 'the long-path file must survive');
 });

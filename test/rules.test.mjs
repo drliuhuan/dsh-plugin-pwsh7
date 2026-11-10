@@ -11,6 +11,7 @@ import {
   RECYCLE_GUARD_PRELUDE,
   buildBasicRulesPrompt,
   basicRulesPromptSizes,
+  destructiveCommandReason,
   guardRemoval,
   needsRecycleGuard,
   normalizeRemovalCommand,
@@ -46,7 +47,7 @@ test('the disclosed prompt cost matches the paragraph', () => {
   assert.equal(sizes.chars, buildBasicRulesPrompt().length);
   assert.equal(sizes.tokens, Math.ceil(sizes.chars / 4));
   // The README, CHANGELOG and status line disclose this exact figure; keep them in sync.
-  assert.equal(sizes.tokens, 395);
+  assert.equal(sizes.tokens, 407);
 });
 
 test('removal commands are detected, unrelated words are not', () => {
@@ -160,4 +161,30 @@ test('the executor guards before delegating and hints the original command', () 
   // No ES private members: a Proxy receiver fails the brand check and takes the tool down.
   assert.doesNotMatch(source, /#[a-z]+\(/);
   assert.match(source, /attachDialectHint\(handle, spec\?\.command\)/);
+});
+
+test('commands that empty the bin or delete permanently are refused before the shell starts', () => {
+  const refused = [
+    ['Clear-RecycleBin -Force', /Recycle Bin is forbidden/],
+    ['cmd /c del "D:\\x.txt"', /delete permanently/],
+    ['cmd.exe /c rd /s /q D:\\x', /delete permanently/],
+    ['[System.IO.File]::Delete("D:\\x.txt")', /permanently/],
+    ['[System.IO.Directory]::Delete("D:\\x")', /permanently/],
+    ['pwsh -Command "del x"', /nested shell/],
+    ['powershell.exe -Command "Clear-RecycleBin"', /Recycle Bin is forbidden|nested shell/],
+  ];
+  for (const [command, expected] of refused) {
+    const reason = destructiveCommandReason(command);
+    assert.ok(reason !== null, command);
+    assert.match(reason, expected);
+  }
+  for (const command of ['Get-ChildItem', 'Remove-Item -LiteralPath x.txt', 'echo "del is forbidden"']) {
+    assert.equal(destructiveCommandReason(command), null, command);
+  }
+});
+
+test('the executor refuses destructive commands before spawning', () => {
+  const source = fs.readFileSync(new URL('../lib/executors/pwsh.mjs', import.meta.url), 'utf8');
+  assert.match(source, /destructiveCommandReason/);
+  assert.match(source, /refused: \$\{refusal\}/);
 });
