@@ -4,6 +4,50 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.3] - 2026-11-17
+### Fixed
+
+- System installs no longer resolve the hard-coded `PowerShell-<version>-win-<arch>.msi` asset.
+  PowerShell 7.7.0 (the latest stable release) publishes no MSI at all — only
+  `PowerShell-7.7.0.msixbundle` and per-architecture ZIPs — so the download and the system install
+  failed.
+- The Windows installer is now selected from the GitHub release manifest by preference:
+  per-architecture **MSI**, then per-architecture **MSIX**, then the architecture-agnostic
+  **MSIXBUNDLE** (`PowerShell-<version>.msixbundle`; a `PowerShell-LTS-<version>.msixbundle` is
+  accepted only when its version matches the release, and `PowerShellPreview-*` bundles are
+  ignored). MSI releases keep the existing in-place `msiexec` upgrade, version verification and
+  legacy side-by-side cleanup.
+
+### Added
+
+- **MSIX/MSIXBUNDLE install path** for releases without an MSI (such as 7.7.0): download with the
+  same live progress and cancel, verify the ZIP/OPC package magic, install with `Add-AppxPackage`
+  through **Windows PowerShell 5.1** (the Appx cmdlets are not available in PowerShell 7), then
+  resolve the registered executable via `Get-AppxPackage Microsoft.PowerShell` →
+  `<InstallLocation>\pwsh.exe` (fallback `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`), probe
+  its version, and record it with `method: msix`. A running PowerShell 7 instance is retried with
+  `Add-AppxPackage -ForceApplicationShutdown`; a blocked sideload (for example `0x80073CFF`) reports
+  how to allow sideloading or to use the current-user portable ZIP.
+- Windows app packages install **per user**, so a `system`-scope request that reaches this path
+  completes as a per-user installation with **no UAC prompt**: the status page shows scope
+  “Current user” and method “Official MSIX app package (per user)”, and the result message explains
+  that the release publishes no MSI. An older machine-wide MSI is left untouched with a warning
+  that Windows Terminal keeps launching it until it is upgraded or uninstalled, while DSH uses the
+  app package.
+- **Redirect/HEAD fallback for installer resolution** when the GitHub API is unavailable: follow
+  the release tag's page redirect and probe the candidate asset URLs with HTTP `HEAD`, then a
+  one-byte range `GET`, in the same MSI → MSIX → MSIXBUNDLE order.
+- `POST /pwsh7/latest` now reports `installerKind` (`msi` | `msix` | `msixbundle` | `zip`) and
+  `installerUrl`; `msiUrl` is populated only for MSI releases. Manual links follow the resolved
+  installer and are labelled “Manual MSI download/upgrade”, “Manual MSIX download/upgrade” or
+  “Manual MSIX bundle download/upgrade”; the portable ZIP link is unchanged.
+- The newest-installed comparison also considers the installation recorded in `config.json`, so an
+  installed 7.7.0 app package is not reported as “update available” merely because an older
+  Program Files MSI remains.
+- First-run/Settings copy now says the system install runs the official installer (MSI, or the MSIX
+  app package when the release publishes no MSI) instead of always “the official MSI”, and notes
+  that the bundle is larger than ~100 MB.
+
 ## [0.6.2] - 2026-11-10
 ### Fixed
 

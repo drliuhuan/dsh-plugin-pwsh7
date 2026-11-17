@@ -14,8 +14,14 @@ import {
   PWSH_RELEASES_PAGE,
   WINGET_PWSH_ID,
   selectPwsh7Asset,
+  selectPwsh7InstallerAsset,
+  selectPwsh7MsixBundleAsset,
   parsePwsh7ZipName,
   parsePwsh7MsiName,
+  parsePwsh7MsixName,
+  parsePwsh7MsixBundleName,
+  PWSH_INSTALLER_PREFERENCE,
+  resolvePwsh7Installer,
   detectSingleTopLevelDirectory,
   verifyArchiveMagic,
   downloadFile,
@@ -152,6 +158,29 @@ const PWSH_RELEASE_FIXTURE = {
 
 const PWSH7_ZIP_URL = 'https://example.invalid/PowerShell-7.6.7-win-x64.zip';
 const PWSH7_MSI_URL = PWSH_RELEASE_FIXTURE.assets[0].browser_download_url;
+const PWSH_770_MSIXBUNDLE_URL =
+  'https://github.com/PowerShell/PowerShell/releases/download/v7.7.0/PowerShell-7.7.0.msixbundle';
+// The real 7.7.0 asset list: no MSI, an MSIX bundle and the per-architecture zips.
+const PWSH_770_RELEASE_FIXTURE = {
+  tag_name: 'v7.7.0',
+  assets: [
+    {
+      name: 'PowerShell-7.7.0-win-x64.zip',
+      browser_download_url: 'https://example.invalid/PowerShell-7.7.0-win-x64.zip',
+      size: 115330228,
+    },
+    {
+      name: 'PowerShell-7.7.0-win-arm64.zip',
+      browser_download_url: 'https://example.invalid/PowerShell-7.7.0-win-arm64.zip',
+      size: 107817704,
+    },
+    {
+      name: 'PowerShell-7.7.0.msixbundle',
+      browser_download_url: PWSH_770_MSIXBUNDLE_URL,
+      size: 369131389,
+    },
+  ],
+};
 const ZIP_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MSI_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]);
 const FIVE_MB = 5 * 1024 * 1024;
@@ -206,6 +235,156 @@ test('resolvePwsh7MsiRelease selects the official MSI asset', async () => {
   assert.equal(asset.url, PWSH7_MSI_URL);
 });
 
+test('selectPwsh7InstallerAsset prefers MSI, then MSIX, then the MSIX bundle', () => {
+  assert.deepEqual([...PWSH_INSTALLER_PREFERENCE], ['msi', 'msix', 'msixbundle']);
+  const msi = selectPwsh7InstallerAsset(PWSH_RELEASE_FIXTURE);
+  assert.equal(msi.kind, 'msi');
+
+  const msixOnly = {
+    tag_name: 'v7.7.0',
+    assets: [
+      {
+        name: 'PowerShell-7.7.0-win-x64.msix',
+        browser_download_url: 'https://example.invalid/PowerShell-7.7.0-win-x64.msix',
+      },
+      {
+        name: 'PowerShell-7.7.0.msixbundle',
+        browser_download_url: PWSH_770_MSIXBUNDLE_URL,
+      },
+    ],
+  };
+  const msix = selectPwsh7InstallerAsset(msixOnly);
+  assert.equal(msix.kind, 'msix');
+  assert.equal(msix.name, 'PowerShell-7.7.0-win-x64.msix');
+  assert.equal(msix.version, '7.7.0');
+
+  // 7.7.0 publishes only the architecture-agnostic bundle.
+  const bundle = selectPwsh7InstallerAsset(PWSH_770_RELEASE_FIXTURE);
+  assert.equal(bundle.kind, 'msixbundle');
+  assert.equal(bundle.name, 'PowerShell-7.7.0.msixbundle');
+  assert.equal(bundle.version, '7.7.0');
+  assert.equal(bundle.url, PWSH_770_MSIXBUNDLE_URL);
+  assert.equal(bundle.size, 369131389);
+
+  assert.equal(selectPwsh7InstallerAsset({ tag_name: 'v7.7.0', assets: [] }), undefined);
+  assert.equal(selectPwsh7InstallerAsset(null), undefined);
+  assert.throws(() => selectPwsh7InstallerAsset(PWSH_770_RELEASE_FIXTURE, 'win-mips'), TypeError);
+});
+
+test('the MSIX bundle matches the release version and ignores previews', () => {
+  const lts = {
+    tag_name: 'v7.6.10',
+    assets: [
+      {
+        name: 'PowerShell-LTS-7.6.10.msixbundle',
+        browser_download_url: 'https://example.invalid/lts.msixbundle',
+      },
+      {
+        name: 'PowerShell-7.6.10.msixbundle',
+        browser_download_url: 'https://example.invalid/plain.msixbundle',
+      },
+    ],
+  };
+  // The plain bundle (the LTS channel's standard package) wins over the explicit LTS name.
+  assert.equal(selectPwsh7MsixBundleAsset(lts).name, 'PowerShell-7.6.10.msixbundle');
+
+  // A bundle whose embedded version differs from the tag is never selected.
+  const mismatch = {
+    tag_name: 'v7.7.0',
+    assets: [
+      {
+        name: 'PowerShell-LTS-7.6.10.msixbundle',
+        browser_download_url: 'https://example.invalid/lts.msixbundle',
+      },
+    ],
+  };
+  assert.equal(selectPwsh7MsixBundleAsset(mismatch), undefined);
+  // Previews use another prefix and must not be installed as a stable release.
+  assert.equal(selectPwsh7MsixBundleAsset({
+    tag_name: 'v7.7.0',
+    assets: [
+      {
+        name: 'PowerShellPreview-7.7.0-rc.1.msixbundle',
+        browser_download_url: 'https://example.invalid/preview.msixbundle',
+      },
+    ],
+  }), undefined);
+
+  // Per-architecture MSIX packages follow the OS architecture.
+  const arm = {
+    tag_name: 'v7.7.0',
+    assets: [
+      {
+        name: 'PowerShell-7.7.0-win-arm64.msix',
+        browser_download_url: 'https://example.invalid/arm64.msix',
+      },
+    ],
+  };
+  assert.equal(selectPwsh7InstallerAsset(arm, 'win-arm64').name, 'PowerShell-7.7.0-win-arm64.msix');
+  assert.equal(selectPwsh7InstallerAsset(arm, 'win-x64'), undefined);
+
+  assert.deepEqual(parsePwsh7MsixName('PowerShell-7.7.0-win-x64.msix'), { version: '7.7.0' });
+  assert.equal(parsePwsh7MsixName('PowerShell-7.7.0-win-x64.msi'), undefined);
+  assert.deepEqual(parsePwsh7MsixBundleName('PowerShell-7.7.0.msixbundle'), { version: '7.7.0' });
+  assert.deepEqual(parsePwsh7MsixBundleName('PowerShell-LTS-7.6.10.msixbundle'), { version: '7.6.10' });
+  assert.equal(parsePwsh7MsixBundleName('PowerShellPreview-7.7.0-rc.1.msixbundle'), undefined);
+});
+
+test('resolvePwsh7Installer resolves the MSIX bundle of a release without an MSI', async () => {
+  const fetchImpl = async (url) => {
+    if (url === PWSH_API_LATEST) return jsonResponse(PWSH_770_RELEASE_FIXTURE);
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const installer = await resolvePwsh7Installer({ fetchImpl });
+  assert.equal(installer.kind, 'msixbundle');
+  assert.equal(installer.version, '7.7.0');
+  assert.equal(installer.url, PWSH_770_MSIXBUNDLE_URL);
+});
+
+test('resolvePwsh7Installer probes MSI, MSIX and MSIXBUNDLE when the API fails', async () => {
+  const seen = [];
+  const fetchImpl = async (url, options = {}) => {
+    seen.push({ url, method: options.method ?? 'GET' });
+    if (url === PWSH_API_LATEST) throw new Error('rate limited');
+    if (url === PWSH_RELEASES_PAGE) {
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: 'https://github.com/PowerShell/PowerShell/releases/tag/v7.7.0',
+        },
+      });
+    }
+    if (url.endsWith('PowerShell-7.7.0-win-x64.msi') || url.endsWith('PowerShell-7.7.0-win-x64.msix')) {
+      return new Response(null, { status: 404 });
+    }
+    if (url === PWSH_770_MSIXBUNDLE_URL) return jsonResponse({});
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const installer = await resolvePwsh7Installer({
+    env: makeEnv('/tmp/dsh-installer-probe'),
+    fetchImpl,
+  });
+  assert.equal(installer.kind, 'msixbundle');
+  assert.equal(installer.synthetic, true);
+  assert.equal(installer.url, PWSH_770_MSIXBUNDLE_URL);
+  const probed = seen.filter((entry) => entry.url.startsWith('https://github.com/PowerShell/PowerShell/releases/download/'));
+  assert.deepEqual(probed.map((entry) => entry.method), ['HEAD', 'HEAD', 'HEAD']);
+  assert.ok(probed[0].url.endsWith('.msi'));
+  assert.ok(probed[1].url.endsWith('.msix'));
+  assert.ok(probed[2].url.endsWith('.msixbundle'));
+});
+
+test('resolvePwsh7Installer reports a release with no Windows installer', async () => {
+  const fetchImpl = async (url) => {
+    if (url === PWSH_API_LATEST) return jsonResponse({ tag_name: 'v7.7.0', assets: [] });
+    throw new Error(`unexpected URL ${url}`);
+  };
+  await assert.rejects(
+    resolvePwsh7Installer({ fetchImpl }),
+    /publishes no MSI, MSIX or MSIXBUNDLE/,
+  );
+});
+
 // ---------------------------------------------------------------------------
 // Archive layout detection / magic
 // ---------------------------------------------------------------------------
@@ -243,6 +422,18 @@ test('verifyArchiveMagic accepts valid zip/MSI headers and rejects garbage', (t)
 // ---------------------------------------------------------------------------
 // Download behavior
 // ---------------------------------------------------------------------------
+
+test('verifyArchiveMagic accepts MSIX/opc package magic', (t) => {
+  const base = makeTemp(t);
+  const good = W.join(base, 'a.msixbundle');
+  const msi = W.join(base, 'b.msi');
+  fs.writeFileSync(good, Buffer.concat([ZIP_MAGIC, Buffer.from('payload')]));
+  fs.writeFileSync(msi, Buffer.concat([MSI_MAGIC, Buffer.from('payload')]));
+  assert.equal(verifyArchiveMagic(good, 'msixbundle'), undefined);
+  assert.equal(verifyArchiveMagic(good, 'msix'), undefined);
+  assert.throws(() => verifyArchiveMagic(msi, 'msixbundle'), /unexpected signature/);
+  assert.throws(() => verifyArchiveMagic(good, 'exe'), /unknown archive kind/);
+});
 
 test('downloadFile streams to disk and reports (bytes, totalBytes) progress', async (t) => {
   const base = makeTemp(t);
@@ -881,6 +1072,122 @@ test('a system upgrade runs the official MSI against the canonical installation 
   assert.equal(config.installed.pwsh.method, 'msi');
   const leftovers = fs.existsSync(W.join(root, 'tmp')) ? fs.readdirSync(W.join(root, 'tmp')) : [];
   assert.deepEqual(leftovers, [], 'the downloaded MSI is removed');
+});
+
+test('a release without an MSI installs the MSIX app bundle for the current user', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const root = W.join(base, 'router');
+  const systemDir = W.join(env.ProgramFiles, 'PowerShell', '7');
+  const appxDir = W.join(base, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe');
+  const appxExe = W.join(appxDir, 'pwsh.exe');
+  let installedFrom;
+  let downloads = 0;
+  const phases = [];
+
+  const result = await installPowerShell7({
+    env, root, scope: 'system', method: 'auto', force: true,
+    resolvePlan: planFor('msi-install', systemDir),
+    isElevated: async () => false,
+    onPhase: (label) => phases.push(label),
+    runAppxInstall: async (payload) => {
+      installedFrom = payload;
+      writeFile(appxExe, 'fake 7.7.0');
+      return {
+        ok: true,
+        path: appxExe,
+        version: '7.7.0',
+        packageFullName: 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe',
+        warnings: [],
+      };
+    },
+    fetchImpl: async (url) => {
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_770_RELEASE_FIXTURE);
+      if (url === PWSH_770_MSIXBUNDLE_URL) {
+        downloads += 1;
+        return streamedResponse(fakeArchive(ZIP_MAGIC));
+      }
+      throw new Error(`unexpected URL ${url}`);
+    },
+    probePwsh: async (exe) => {
+      if (W.normalize(exe) === W.normalize(appxExe)) return { ok: true, version: '7.7.0' };
+      return { ok: false, version: undefined, output: 'missing' };
+    },
+  });
+
+  assert.equal(result.ok, true, result.message);
+  // Windows registers app packages per user, so a system-scope request reports the user scope.
+  assert.equal(result.scope, 'user');
+  assert.equal(result.method, 'msix');
+  assert.equal(result.path, W.normalize(appxExe));
+  assert.equal(result.version, '7.7.0');
+  assert.equal(result.url, PWSH_770_MSIXBUNDLE_URL);
+  assert.equal(downloads, 1);
+  assert.ok(installedFrom, 'the app-package helper was asked to install');
+  assert.ok(installedFrom.packagePath.toLowerCase().endsWith('.msixbundle'));
+  assert.deepEqual(phases, ['download', 'installing', 'verify']);
+
+  const config = readRouterConfig(env);
+  assert.equal(config.pwshPath, W.normalize(appxExe));
+  assert.equal(config.installed.pwsh.method, 'msix');
+  assert.equal(config.installed.pwsh.scope, 'user');
+  assert.equal(config.installed.pwsh.version, '7.7.0');
+  assert.deepEqual(fs.readdirSync(W.join(root, 'tmp')), [], 'the downloaded bundle is removed');
+});
+
+test('an app package already at the latest version is reused without a download', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const root = W.join(base, 'router');
+  const alias = W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps', 'pwsh.exe');
+  writeFile(alias, 'fake 7.7.0');
+  let fetches = 0;
+
+  const result = await installPowerShell7({
+    env, root, scope: 'system', method: 'auto',
+    resolvePlan: planFor('msi-install', W.join(env.ProgramFiles, 'PowerShell', '7')),
+    isElevated: async () => false,
+    fetchImpl: async (url) => {
+      fetches += 1;
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_770_RELEASE_FIXTURE);
+      throw new Error(`unexpected download ${url}`);
+    },
+    probePwsh: async () => ({ ok: true, version: '7.7.0' }),
+  });
+
+  assert.equal(result.ok, true, result.message);
+  assert.equal(result.method, 'msix');
+  assert.equal(result.path, W.normalize(alias));
+  assert.equal(fetches, 1, 'only the release manifest is fetched; nothing is downloaded');
+  const config = readRouterConfig(env);
+  assert.equal(config.installed.pwsh.method, 'msix');
+  assert.equal(config.installed.pwsh.scope, 'user');
+});
+
+test('an app-package failure keeps the real reason and a sideloading hint', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const root = W.join(base, 'router');
+  const result = await installPowerShell7({
+    env, root, scope: 'system', method: 'auto', force: true,
+    resolvePlan: planFor('msi-install', W.join(env.ProgramFiles, 'PowerShell', '7')),
+    isElevated: async () => false,
+    runAppxInstall: async () => ({
+      ok: false,
+      warnings: ['enable sideloading'],
+      error: 'Add-AppxPackage : Deployment failed with HRESULT: 0x80073CFF',
+    }),
+    fetchImpl: async (url) => {
+      if (url === PWSH_API_LATEST) return jsonResponse(PWSH_770_RELEASE_FIXTURE);
+      if (url === PWSH_770_MSIXBUNDLE_URL) return streamedResponse(fakeArchive(ZIP_MAGIC));
+      throw new Error(`unexpected URL ${url}`);
+    },
+    probePwsh: async () => ({ ok: false, version: undefined, output: '' }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.message, /0x80073CFF/);
+  assert.match(result.hint, /Sideload/);
 });
 
 test('an outdated canonical install is upgraded even when a newer side-by-side copy exists', async (t) => {

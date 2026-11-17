@@ -1170,6 +1170,29 @@ test('POST /pwsh7/uninstall reports locked files with ok:false and warnings (HTT
   assert.equal(payload.state.install.exists, true);
 });
 
+test('a relocation through an MSIX app package records the per-user installation', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const appxExe = 'C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe\\pwsh.exe';
+  const service = makeSettingsService(t, env, {
+    install: async () => ({
+      ok: true,
+      result: { ok: true, scope: 'user', method: 'msix', version: '7.7.0', path: appxExe, warnings: [] },
+    }),
+  });
+
+  const started = await service.relocate({ removeUser: false, method: 'auto' });
+  assert.equal(started.ok, true);
+  await service.waitForIdle(5000);
+  const relocation = service.snapshot().relocate;
+  assert.ok(relocation !== null && typeof relocation === 'object');
+  assert.equal(relocation.ok, true);
+  // Windows app packages are per-user; the relocation must report that instead of "system-wide".
+  assert.equal(relocation.method, 'msix');
+  assert.equal(relocation.scope, 'user');
+  assert.equal(relocation.systemPath, appxExe);
+});
+
 test('POST /pwsh7/relocate returns 412 when unelevated and 202 when elevated', async (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);

@@ -542,6 +542,71 @@ test('POST /pwsh7/latest compares the newest release with the installed executab
   assert.equal(cached.json().latest.version, '7.7.0');
 });
 
+test('POST /pwsh7/latest reports the MSIX bundle of a release without an MSI', async (t) => {
+  const service = makeService(t, {
+    detect: () => routerState({ found: true, version: '7.6.7' }),
+    probe: async () => ({ ok: true, version: '7.6.7' }),
+    resolveLatest: async () => ({
+      version: '7.7.0',
+      kind: 'msixbundle',
+      url: 'https://example.test/PowerShell-7.7.0.msixbundle',
+    }),
+  });
+  const handlers = createSetupHandlers(service);
+  const res = makeResponse();
+  await handlers.latest(
+    makeRequest({ method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }),
+    res,
+  );
+  const payload = res.json();
+  assert.equal(payload.latest.version, '7.7.0');
+  assert.equal(payload.latest.installerKind, 'msixbundle');
+  assert.equal(payload.latest.installerUrl, 'https://example.test/PowerShell-7.7.0.msixbundle');
+  // A release without an MSI must not fabricate an MSI download link.
+  assert.equal(payload.latest.msiUrl, null);
+  assert.match(payload.latest.zipUrl, /PowerShell-7\.7\.0-win-x64\.zip$/);
+  assert.equal(payload.latest.updateAvailable, true);
+  assert.equal(payload.state.latest.installerKind, 'msixbundle');
+});
+
+test('POST /pwsh7/latest does not offer an update over an installed 7.7 app package', async (t) => {
+  const appxExe = 'C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe\\pwsh.exe';
+  const service = makeService(t, {
+    detect: () => routerState({ found: true, version: '7.7.0', path: appxExe }),
+    // The canonical %ProgramFiles% MSI is still 7.6.7; the app package is 7.7.0.
+    probe: async (pwshPath) => ({
+      ok: true,
+      version: /windowsapps/i.test(String(pwshPath)) ? '7.7.0' : '7.6.7',
+    }),
+    detectPlan: async () => ({
+      plan: { strategy: 'msi', targetDirectory: 'C:\\Program Files\\PowerShell\\7' },
+      main: {
+        path: 'C:\\Program Files\\PowerShell\\7\\pwsh.exe',
+        directory: 'C:\\Program Files\\PowerShell\\7',
+        kind: 'msi',
+        scope: 'system',
+      },
+    }),
+    resolveLatest: async () => ({
+      version: '7.7.0',
+      kind: 'msixbundle',
+      url: 'https://example.test/PowerShell-7.7.0.msixbundle',
+    }),
+  });
+  const handlers = createSetupHandlers(service);
+  const res = makeResponse();
+  await handlers.latest(
+    makeRequest({ method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }),
+    res,
+  );
+  const payload = res.json();
+  // The newest installation (the app package) wins, so the stale Program Files MSI cannot make the
+  // same 7.7.0 app package look like a pending update.
+  assert.equal(payload.latest.current, '7.7.0');
+  assert.equal(payload.latest.updateAvailable, false);
+  assert.equal(payload.latest.strategy, 'msi');
+});
+
 test('POST /pwsh7/latest keeps the installed state when the check fails', async (t) => {
   const service = makeService(t, {
     detect: () => routerState({ found: true, version: '7.6.7' }),
