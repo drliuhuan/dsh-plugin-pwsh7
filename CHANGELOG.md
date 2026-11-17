@@ -4,6 +4,33 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-11-17
+### Added
+
+- **PowerShell 7 installation picker** in Settings → PowerShell 7 → Installation. When the machine
+  exposes more than one installation (machine or per-user MSI, the plugin's portable copy, a legacy
+  side-by-side copy, the Store alias, Chocolatey, Scoop, or a custom `PATH` entry), a dropdown
+  lists each detected entry with its probed version, scope (System / Current user) and method,
+  marks the currently active one, and offers the default **Automatic** (the existing plugin-route
+  order). Choosing an entry persists `selectedPwshPath` plus its probed version/scope/method
+  (`selectedPwshMeta`) in `config.json` and switches the route to `plugin`; choosing **Automatic**
+  removes both keys without changing the current route. The selection
+  only affects the plugin route — the `system` route stays independent, and a forced `pwsh5` route
+  disables the picker.
+- Detection priority now consults the explicit selection after `DSH_PWSH_PATH`:
+  `DSH_PWSH_PATH` → `selectedPwshPath` → the installer-recorded installation (`config.pwshPath` /
+  `installed.pwsh.path`) → the well-known/PATH order. A selected path that no longer exists is
+  ignored and automatic detection resumes; `/pwsh7/state` reports
+  `selection: {path: string|null, found: boolean}`.
+- **New routes:** `GET /pwsh7/installations` (read-only; each detected installation's `path`,
+  `version`, `scope`, `method` and `source`, plus `active` and `selected` flags) and
+  `POST /pwsh7/installation` (`{"path": "<absolute pwsh.exe>"}` to select, `{"path": null}` to
+  clear; `400` for a nonexistent path and `409` while an install/maintenance job runs). The
+  setup/settings route table now has 14 exact routes.
+- Installing, updating, uninstalling or relocating PowerShell 7 clears the explicit selection, so
+  the freshly installed or recorded copy becomes the active one again; selecting is refused while
+  an install or maintenance job is running.
+
 ## [0.6.3] - 2026-11-17
 ### Fixed
 

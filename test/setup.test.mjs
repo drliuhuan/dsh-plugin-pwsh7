@@ -306,7 +306,7 @@ function makeService(t, overrides = {}) {
   return service;
 }
 
-test('route table names the eleven exact setup/maintenance routes', () => {
+test('route table names the fourteen exact setup/maintenance routes', () => {
   const noop = () => {};
   const rows = setupRouteRows({
     state: noop,
@@ -317,6 +317,8 @@ test('route table names the eleven exact setup/maintenance routes', () => {
     dialect: noop,
     onboarding: noop,
     latest: noop,
+    installations: noop,
+    installation: noop,
     uninstall: noop,
     relocate: noop,
     selfcheck: noop,
@@ -330,6 +332,8 @@ test('route table names the eleven exact setup/maintenance routes', () => {
     SETUP_ROUTES.dialect,
     SETUP_ROUTES.onboarding,
     SETUP_ROUTES.latest,
+    SETUP_ROUTES.installations,
+    SETUP_ROUTES.installation,
     SETUP_ROUTES.uninstall,
     SETUP_ROUTES.relocate,
     SETUP_ROUTES.selfcheck,
@@ -401,6 +405,8 @@ test('installRouterFeatures wires the prompt and routes from the executor row', 
     SETUP_ROUTES.dialect,
     SETUP_ROUTES.onboarding,
     SETUP_ROUTES.latest,
+    SETUP_ROUTES.installations,
+    SETUP_ROUTES.installation,
     SETUP_ROUTES.uninstall,
     SETUP_ROUTES.relocate,
     SETUP_ROUTES.selfcheck,

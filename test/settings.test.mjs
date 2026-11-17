@@ -292,8 +292,8 @@ test('describeInstall reports the plugin-managed per-user copy as removable', (t
   const install = describeInstall({ env, root, state });
   assert.deepEqual(Object.keys(install).sort(), [
     'directory', 'exists', 'legacySystem', 'legacySystemPaths', 'managed', 'method', 'path',
-    'pathEntry', 'removable', 'scope', 'systemCopy', 'systemExe', 'systemVersionedPaths',
-    'userCopy', 'version',
+    'pathEntry', 'removable', 'scope', 'selectedPath', 'selectionMissing', 'systemCopy',
+    'systemExe', 'systemVersionedPaths', 'userCopy', 'version',
   ]);
   assert.equal(install.exists, true);
   assert.equal(install.managed, true);
@@ -326,6 +326,35 @@ test('describeInstall reports the plugin-managed per-user copy as removable', (t
   assert.equal(systemInstall.userCopy, true);
 });
 
+test('describeInstall describes the picked installation instead of the recorded one', (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const systemExe = W.normalize(W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'));
+  writeFile(systemExe);
+  const install = describeInstall({
+    env,
+    state: fakeState({
+      found: true,
+      pwshPath: systemExe,
+      config: {
+        version: 1,
+        route: 'plugin',
+        selectedPwshPath: systemExe,
+        selectedPwshMeta: { version: '7.6.10', method: 'msi', scope: 'system' },
+        // A stale recording from the last plugin install must not leak into the description.
+        installed: { pwsh: { path: 'C:\\Users\\T\\AppData\\Local\\dsh\\pwsh7\\powershell7\\7.7.0\\pwsh.exe', method: 'portable', scope: 'user', version: '7.7.0' } },
+      },
+    }),
+  });
+  assert.equal(install.exists, true);
+  assert.equal(install.path, systemExe);
+  assert.equal(install.version, '7.6.10', 'the picked version wins over the recorded one');
+  assert.equal(install.method, 'msi');
+  assert.equal(install.scope, 'system');
+  assert.equal(install.selectedPath, systemExe);
+  assert.equal(install.selectionMissing, false);
+});
+
 test('the state snapshot exposes the v0.3.0 fields', async (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);
@@ -347,8 +376,8 @@ test('the state snapshot exposes the v0.3.0 fields', async (t) => {
   assert.ok(snapshot.systemPath.length > 0);
   assert.deepEqual(Object.keys(snapshot.install).sort(), [
     'directory', 'exists', 'legacySystem', 'legacySystemPaths', 'managed', 'method', 'path',
-    'pathEntry', 'removable', 'scope', 'systemCopy', 'systemExe', 'systemVersionedPaths',
-    'userCopy', 'version',
+    'pathEntry', 'removable', 'scope', 'selectedPath', 'selectionMissing', 'systemCopy',
+    'systemExe', 'systemVersionedPaths', 'userCopy', 'version',
   ]);
   assert.equal(snapshot.install.exists, false);
   assert.deepEqual(snapshot.elevation, { available: false, requiredForSystem: true });
@@ -1282,7 +1311,169 @@ test('POST /pwsh7/selfcheck always answers a structured 200', async (t) => {
   assert.equal(wrongType.statusCode, 415);
 });
 
-test('the setup/maintenance route table has eight exact routes', (t) => {
+
+test('GET /pwsh7/installations lists the picker entries with active/selected flags', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const canonical = W.normalize(W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'));
+  const portable = W.normalize(W.join(base, 'custom', 'pwsh.exe'));
+  writeFile(canonical);
+  writeFile(portable);
+  const service = makeSettingsService(t, env, {
+    detect: () => fakeState({
+      found: true,
+      pwshPath: portable,
+      config: { version: 1, selectedPwshPath: canonical },
+    }),
+    listInstallations: async () => ({
+      installations: [
+        { path: canonical, version: '7.6.10', scope: 'system', method: 'msi', source: 'msi', verified: true },
+        { path: portable, version: '7.7.0', scope: 'user', method: 'portable', source: 'plugin', verified: true },
+      ],
+    }),
+  });
+  const handlers = createSetupHandlers(service);
+  const res = makeResponse();
+  await handlers.installations(makeRequest({ method: 'GET' }), res);
+  assert.equal(res.statusCode, 200);
+  const payload = res.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.selected, canonical);
+  assert.equal(payload.active, portable);
+  const byPath = new Map(payload.installations.map((entry) => [entry.path, entry]));
+  assert.equal(byPath.get(canonical).selected, true);
+  assert.equal(byPath.get(canonical).active, false);
+  assert.equal(byPath.get(portable).selected, false);
+  assert.equal(byPath.get(portable).active, true);
+});
+
+test('POST /pwsh7/installation persists the pick and switches to the plugin route', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const canonical = W.normalize(W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'));
+  writeFile(canonical);
+  writeRouterConfig({ version: 1, route: 'system' }, env);
+  const service = makeSettingsService(t, env, {
+    detect: () => fakeState({ found: false, config: readRouterConfig(env) }),
+    listInstallations: async () => ({
+      installations: [{
+        path: canonical,
+        version: '7.6.10',
+        scope: 'system',
+        method: 'msi',
+        source: 'msi',
+        verified: true,
+      }],
+    }),
+  });
+  const handlers = createSetupHandlers(service);
+
+  const res = makeResponse();
+  await handlers.installation(postJson('/pwsh7/installation', { path: canonical }), res);
+  assert.equal(res.statusCode, 200);
+  const config = readRouterConfig(env);
+  assert.equal(config.selectedPwshPath, canonical);
+  assert.equal(config.route, 'plugin', 'picking an installation switches to the plugin route');
+  assert.deepEqual(config.selectedPwshMeta, { version: '7.6.10', method: 'msi', scope: 'system' });
+  const payload = res.json();
+  assert.equal(payload.ok, true);
+  assert.equal(payload.state.selection.path, canonical);
+  assert.equal(payload.state.route, 'plugin');
+  assert.equal(payload.state.install.version, '7.6.10', 'the status row names the picked version');
+
+  const cleared = makeResponse();
+  await handlers.installation(postJson('/pwsh7/installation', { path: null }), cleared);
+  assert.equal(cleared.statusCode, 200);
+  assert.equal(readRouterConfig(env).selectedPwshPath, undefined);
+  assert.equal(cleared.json().state.selection.path, null);
+});
+
+test('POST /pwsh7/installation validates the body and refuses unknown paths', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const service = makeSettingsService(t, env, {
+    detect: () => fakeState({ found: false, config: readRouterConfig(env) }),
+  });
+  const handlers = createSetupHandlers(service);
+
+  const missing = makeResponse();
+  await handlers.installation(postJson('/pwsh7/installation', { path: 'C:\\nope\\pwsh.exe' }), missing);
+  assert.equal(missing.statusCode, 400);
+
+  const badShape = makeResponse();
+  await handlers.installation(postJson('/pwsh7/installation', { path: 42 }), badShape);
+  assert.equal(badShape.statusCode, 400);
+
+  // Only an absolute path to a pwsh.exe may be pinned.
+  const notPwsh = W.normalize(W.join(base, 'notes.exe'));
+  writeFile(notPwsh);
+  const notPwshRes = makeResponse();
+  await handlers.installation(postJson('/pwsh7/installation', { path: notPwsh }), notPwshRes);
+  assert.equal(notPwshRes.statusCode, 400);
+
+  const relative = makeResponse();
+  await handlers.installation(postJson('/pwsh7/installation', { path: 'tools\\pwsh.exe' }), relative);
+  assert.equal(relative.statusCode, 400);
+
+  const wrongMethod = makeResponse();
+  await handlers.installation(makeRequest({ method: 'GET' }), wrongMethod);
+  assert.equal(wrongMethod.statusCode, 405);
+
+  const wrongType = makeResponse();
+  await handlers.installation(makeRequest({
+    method: 'POST',
+    headers: { 'content-type': 'text/plain' },
+    body: '{}',
+  }), wrongType);
+  assert.equal(wrongType.statusCode, 415);
+
+  assert.equal(readRouterConfig(env), undefined, 'no rejected request wrote config.json');
+});
+
+test('clearing the installation pick keeps the current route', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const canonical = W.normalize(W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'));
+  writeFile(canonical);
+  // The user picked an installation (plugin route) and then switched to the system route.
+  writeRouterConfig({ version: 1, route: 'system', selectedPwshPath: canonical }, env);
+  const service = makeSettingsService(t, env, {
+    detect: () => fakeState({ found: false, config: readRouterConfig(env) }),
+  });
+  const outcome = await service.selectInstallation(null);
+  assert.equal(outcome.ok, true);
+  const config = readRouterConfig(env);
+  assert.equal(config.selectedPwshPath, undefined);
+  assert.equal(config.route, 'system', 'clearing the pick must not switch the route');
+});
+
+test('a successful install clears the explicit installation pick', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const picked = W.normalize(W.join(base, 'custom', 'pwsh.exe'));
+  writeFile(picked);
+  writeRouterConfig({
+    version: 1,
+    route: 'plugin',
+    selectedPwshPath: picked,
+    selectedPwshMeta: { version: '7.6.10', method: 'msi', scope: 'system' },
+  }, env);
+  const service = makeSettingsService(t, env, {
+    detect: () => fakeState({ found: false, config: readRouterConfig(env) }),
+    install: async () => ({
+      ok: true,
+      result: { ok: true, scope: 'user', method: 'portable', version: '7.7.0' },
+    }),
+  });
+  service.start('auto', 'user');
+  await service.waitForIdle(5000);
+  assert.equal(service.snapshot().phase, 'done');
+  const cleared = readRouterConfig(env);
+  assert.equal(cleared.selectedPwshPath, undefined);
+  assert.equal(cleared.selectedPwshMeta, undefined, 'the display metadata is cleared with the path');
+});
+
+test('the setup/maintenance route table has fourteen exact routes', (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);
   const service = createSetupService({
@@ -1294,6 +1485,7 @@ test('the setup/maintenance route table has eight exact routes', (t) => {
   t.after(() => service.dispose());
   const handlers = createSetupHandlers(service);
   const rows = setupRouteRows(handlers);
+  assert.equal(rows.length, 14);
   assert.deepEqual(rows.map((row) => row.path), Object.values(SETUP_ROUTES));
   assert.ok(rows.every((row) => row.kind === 'exact'));
 });

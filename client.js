@@ -34,6 +34,9 @@
   var ROUTE_DELETION_GUARD = '/pwsh7/deletion-guard';
   var ROUTE_ONBOARDING = '/pwsh7/onboarding';
   var ROUTE_LATEST = '/pwsh7/latest';
+  /** Installation picker: the probed list and the persisted pick (v0.7.0). */
+  var ROUTE_INSTALLATIONS = '/pwsh7/installations';
+  var ROUTE_INSTALLATION = '/pwsh7/installation';
   var ROUTE_UNINSTALL = '/pwsh7/uninstall';
   var ROUTE_RELOCATE = '/pwsh7/relocate';
   var ROUTE_SELFCHECK = '/pwsh7/selfcheck';
@@ -192,6 +195,19 @@
     routePluginHint: 'Prefers the plugin-managed copy (or DSH_PWSH_PATH), then any PowerShell 7 installed on this machine.',
     routeSystemHint: 'Uses a system-wide PowerShell 7 only. When none is installed, the pwsh tool falls back to Windows PowerShell 5.1.',
     routePwsh5Hint: 'Forces the pwsh tool to Windows PowerShell 5.1. All PowerShell 7 prompt guidance and dialect hints are off while this route is active; the always-on deletion-safety rule still sends Remove-Item targets to the Recycle Bin.',
+    pickerLabel: 'PowerShell 7 to use',
+    pickerAutomatic: 'Automatic (plugin route order)',
+    pickerActive: 'active',
+    pickerUnverified: 'version unknown',
+    pickerHint: 'Runs this installation through the plugin route. The choice is stored in config.json; installing, updating, uninstalling or relocating PowerShell 7 clears it.',
+    pickerSystemHint: 'The system route is independent. Selecting an installation switches to the plugin route so the choice takes effect.',
+    pickerPwsh5Hint: 'The pwsh5 route is forced and ignores the selection. Switch to the plugin route to choose a PowerShell 7 installation.',
+    pickerLoading: 'Looking for PowerShell 7 installations…',
+    pickerEmpty: 'No PowerShell 7 installations were detected.',
+    pickerMissing: 'The selected installation no longer exists ({path}); automatic detection is used instead.',
+    pickerSaving: 'Saving the installation selection…',
+    pickerSaved: 'PowerShell 7 installation selection saved.',
+    pickerAutomaticSaved: 'Selection cleared; the plugin route order is used again.',
     routeSystemPath: 'The system default currently resolves to {path}.',
     routeSystemMissing: 'No system-wide PowerShell 7 was found; the pwsh tool will fall back to Windows PowerShell 5.1.',
     legacySystemHint: 'The active executable is a versioned copy that an older plugin release extracted into the system folder. Update replaces the main system installation with the official installer (MSI, or the MSIX app package when a release publishes no MSI) and removes the extra copy; that main installation is what Windows Terminal launches.',
@@ -387,6 +403,19 @@
     routePluginHint: '优先使用插件托管的副本或 DSH_PWSH_PATH，其次是本机已安装的 PowerShell 7。',
     routeSystemHint: '只使用系统范围的 PowerShell 7。本机没有安装时，pwsh 工具会回退到 Windows PowerShell 5.1。',
     routePwsh5Hint: '强制 pwsh 工具使用 Windows PowerShell 5.1。此路由生效期间，全部 PowerShell 7 提示词注入和方言提示都会关闭；始终开启的删除安全规则仍会把 Remove-Item 的目标移入回收站。',
+    pickerLabel: '使用的 PowerShell 7',
+    pickerAutomatic: '自动（插件路由顺序）',
+    pickerActive: '当前',
+    pickerUnverified: '版本未知',
+    pickerHint: '通过插件路由运行这个安装。选择会写入 config.json；安装、升级、卸载或迁移 PowerShell 7 时会清除该选择。',
+    pickerSystemHint: '系统默认路由与此无关；选择某个安装会切换到插件路由以便生效。',
+    pickerPwsh5Hint: '当前强制使用 pwsh5，选择被忽略。请先切换到插件路由再选择 PowerShell 7 安装。',
+    pickerLoading: '正在查找 PowerShell 7 安装…',
+    pickerEmpty: '没有检测到其他 PowerShell 7 安装。',
+    pickerMissing: '所选安装已不存在（{path}），将改用自动检测。',
+    pickerSaving: '正在保存安装选择…',
+    pickerSaved: '已保存 PowerShell 7 安装选择。',
+    pickerAutomaticSaved: '已清除选择，重新使用插件路由顺序。',
     routeSystemPath: '系统默认目前解析到 {path}。',
     routeSystemMissing: '没有找到系统范围的 PowerShell 7，pwsh 工具将回退到 Windows PowerShell 5.1。',
     legacySystemHint: '当前可执行文件是旧版插件解压到系统目录的带版本号副本。升级会用官方安装器（MSI；若该版本不提供 MSI，则为 MSIX 应用包）替换主安装并删除这个多余副本；Windows Terminal 启动的正是主安装。',
@@ -521,6 +550,10 @@
     '.pwsh7_rowValue{margin:0;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary);word-break:break-word}',
     '.pwsh7_rowValue[data-mono=true]{font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;',
     'color:var(--dsw-alias-label-secondary);word-break:break-all}',
+    '.pwsh7_picker{display:flex;flex-direction:column;gap:4px;min-width:0}',
+    '.pwsh7_pickerSelect{box-sizing:border-box;width:100%;max-width:100%;height:30px;padding:0 8px;border-radius:var(--dsw-radius-md);',
+    'border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px}',
+    '.pwsh7_pickerSelect:disabled{opacity:.6}',
     '.pwsh7_flags{display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0}',
     '.pwsh7_flag{display:inline-flex;align-items:center;gap:5px;padding:1px 8px;border-radius:999px;',
     'border:.5px solid var(--dsw-alias-border-l2);font-size:11px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
@@ -777,6 +810,13 @@
           installerUrl: textOrNull(source.installerUrl)
         };
       })(raw.latest),
+      selection: (function (rawSelection) {
+        var source = rawSelection !== null && typeof rawSelection === 'object' ? rawSelection : {};
+        return {
+          path: textOrNull(source.path),
+          found: source.found === true
+        };
+      })(raw.selection),
       releasesUrl: textOrNull(raw.releasesUrl),
       source: textOrNull(raw.source),
       systemPath: textOrNull(raw.systemPath),
@@ -1794,6 +1834,14 @@
     var notice = noticeState[0];
     var setNotice = noticeState[1];
 
+    /** `/pwsh7/installations` payload (`{ok, installations, selected, active, error}`), or null. */
+    var pickerState = React.useState(null);
+    var picker = pickerState[0];
+    var setPicker = pickerState[1];
+    var pickerSerial = React.useRef(0);
+    /** Active/selected path pair whose picker list is already loaded. */
+    var pickerKey = React.useRef(null);
+
     var mounted = React.useRef(true);
     var serial = React.useRef(0);
     var pollTimer = React.useRef(null);
@@ -1821,6 +1869,15 @@
           relocateSeen.current = signature;
           setNotice(relocationNotice);
         }
+      }
+      // The active/selected executable changed (install finished, selection changed, path vanished):
+      // reload the picker so its options and marks stay correct.
+      var selectionInfo = next.selection !== null && typeof next.selection === 'object' ? next.selection : {};
+      var nextPickerKey = (typeof selectionInfo.path === 'string' ? selectionInfo.path : '')
+        + '|' + (next.found === true && typeof next.path === 'string' ? next.path : '');
+      if (nextPickerKey !== pickerKey.current) {
+        pickerKey.current = nextPickerKey;
+        loadInstallations();
       }
       setHost(next);
     }
@@ -2056,6 +2113,7 @@
     React.useEffect(function () {
       mounted.current = true;
       refresh();
+      loadInstallations();
       void postJson(ROUTE_LATEST, {})
         .then(function (data) {
           if (data && data.state) adopt(data.state);
@@ -2128,6 +2186,105 @@
         { key: key, className: 'pwsh7_flag', 'data-on': on ? 'true' : 'false' },
         React.createElement('span', { key: 'dot', className: 'pwsh7_flagDot', 'aria-hidden': 'true' }),
         label + ': ' + (on ? t('yes') : t('no'))
+      );
+    }
+
+    /**
+     * Load the installation picker's options. They live on their own route because probing every
+     * executable is too expensive for the frequently polled state snapshot; a serial guard drops a
+     * stale reply that would race a newer one.
+     */
+    function loadInstallations() {
+      var ticket = (pickerSerial.current += 1);
+      onlineFetch(ROUTE_INSTALLATIONS, { cache: 'no-store', credentials: 'omit' })
+        .then(function (response) {
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          return response.json();
+        })
+        .then(function (data) {
+          if (mounted.current && ticket === pickerSerial.current) setPicker(data);
+        })
+        .catch(function (error) {
+          if (!mounted.current || ticket !== pickerSerial.current) return;
+          setPicker({
+            ok: false,
+            installations: [],
+            error: textOrNull(error && error.message) || 'HTTP error'
+          });
+        });
+    }
+
+    /** Persist the installation picked in the dropdown (`null` = automatic order). */
+    function chooseInstallation(pathValue) {
+      if (host === null) return;
+      var target = typeof pathValue === 'string' && pathValue.length > 0 ? pathValue : null;
+      runAction('installation', function () {
+        return postJson(ROUTE_INSTALLATION, { path: target }).then(function (data) {
+          if (data.state) adopt(data.state);
+          else refresh();
+          loadInstallations();
+          if (mounted.current) {
+            setNotice({ text: t(target === null ? 'pickerAutomaticSaved' : 'pickerSaved'), warnings: [] });
+          }
+        });
+      });
+    }
+
+    /**
+     * The installation picker: one `<select>` over the probed installations plus the automatic
+     * order. `host.selection.path` preselects before the list finishes loading, and a stale pick
+     * is called out instead of silently running something else.
+     */
+    function pickerControl() {
+      var selectedPath = host.selection !== null && host.selection.path !== null ? host.selection.path : '';
+      var list = picker !== null && Array.isArray(picker.installations) ? picker.installations : [];
+      var options = [React.createElement('option', { key: 'automatic', value: '' }, t('pickerAutomatic'))];
+      for (var index = 0; index < list.length; index += 1) {
+        var entry = list[index];
+        var versionText = entry.version === null || entry.version === undefined
+          ? t('pickerUnverified')
+          : 'v' + entry.version;
+        var optionLabel = versionText
+          + ' · ' + scopeLabel(entry.scope)
+          + ' · ' + methodLabel(entry.method)
+          + (entry.active === true ? ' · ' + t('pickerActive') : '');
+        options.push(React.createElement(
+          'option',
+          { key: 'entry-' + index, value: entry.path, title: entry.path },
+          optionLabel + ' — ' + entry.path
+        ));
+      }
+      var disabled = busy || host.route === 'pwsh5';
+      var hint = host.route === 'pwsh5'
+        ? t('pickerPwsh5Hint')
+        : (host.route === 'system' ? t('pickerSystemHint') : t('pickerHint'));
+      return React.createElement(
+        'div',
+        { key: 'picker-control', className: 'pwsh7_picker' },
+        React.createElement('select', {
+          key: 'select',
+          className: 'pwsh7_pickerSelect',
+          value: selectedPath,
+          'aria-label': t('pickerLabel'),
+          disabled: disabled,
+          onChange: function (event) {
+            chooseInstallation(event !== null && event.target !== null ? event.target.value : '');
+          }
+        }, options),
+        React.createElement('p', { key: 'hint', className: 'pwsh7_hint' }, hint),
+        picker === null
+          ? React.createElement('p', { key: 'loading', className: 'pwsh7_hint' }, t('pickerLoading'))
+          : (picker.ok === false
+            ? React.createElement('p', { key: 'error', className: 'pwsh7_hint' }, picker.error)
+            : (list.length === 0
+              ? React.createElement('p', { key: 'empty', className: 'pwsh7_hint' }, t('pickerEmpty'))
+              : null)),
+        host.selection !== null && host.selection.path !== null && host.selection.found !== true
+          ? React.createElement('p', { key: 'missing', className: 'pwsh7_hint' }, interpolate(t('pickerMissing'), { path: host.selection.path }))
+          : null,
+        busyAction === 'installation'
+          ? React.createElement('p', { key: 'saving', className: 'pwsh7_hint' }, t('pickerSaving'))
+          : null
       );
     }
 
@@ -2340,6 +2497,12 @@
       { key: 'install', className: 'pwsh7_card' },
       React.createElement('h3', { key: 'title', className: 'pwsh7_cardTitle' }, t('sectionInstall')),
       React.createElement('div', { key: 'rows', className: 'pwsh7_rows' }, installRows),
+      React.createElement(
+        'div',
+        { key: 'picker', className: 'pwsh7_row' },
+        React.createElement('span', { key: 'label', className: 'pwsh7_rowLabel' }, t('pickerLabel')),
+        pickerControl()
+      ),
       host.legacySystemPaths.length > 0
         ? React.createElement('p', { key: 'legacy-hint', className: 'pwsh7_actionHint' }, t('legacySystemHint'))
         : null

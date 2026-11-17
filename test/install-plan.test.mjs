@@ -10,6 +10,7 @@ import {
   classifyPwshPath,
   detectInstallations,
   expandEnvironmentVariables,
+  listPwshInstallations,
   parseMsiProductRecords,
   planUpgrade,
   resolvePwshArchitecture,
@@ -41,6 +42,87 @@ function writeFile(file) {
   fs.mkdirSync(W.dirname(file), { recursive: true });
   fs.writeFileSync(file, 'fake', 'utf8');
 }
+
+test('listPwshInstallations probes every detected install and sorts newest first', async () => {
+  const env = makeEnv('/tmp/dsh-plan-picker');
+  const root = W.join(env.LOCALAPPDATA, 'dsh', 'pwsh7');
+  const canonical = W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe');
+  const portable = W.join(root, 'powershell7', '7.4.6', 'pwsh.exe');
+  const alias = W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps', 'pwsh.exe');
+  const plan = {
+    installations: [
+      {
+        path: canonical,
+        directory: W.join(env.ProgramFiles, 'PowerShell', '7'),
+        kind: 'msi',
+        scope: 'system',
+        source: 'msi',
+        version: '7.6.10',
+      },
+      {
+        path: portable,
+        directory: W.join(root, 'powershell7', '7.4.6'),
+        kind: 'plugin-user',
+        scope: 'user',
+        source: 'plugin',
+        version: '7.4.6',
+      },
+      { path: alias, directory: W.dirname(alias), kind: 'store', scope: 'user', source: 'store' },
+    ],
+    main: { path: canonical, directory: W.dirname(canonical), kind: 'msi', scope: 'system' },
+  };
+  const probed = [];
+  const result = await listPwshInstallations({
+    env,
+    root,
+    plan,
+    probe: async (exe) => {
+      probed.push(exe);
+      if (W.normalize(exe) === W.normalize(alias)) return { ok: false, version: undefined, output: 'alias not runnable' };
+      if (W.normalize(exe) === W.normalize(portable)) return { ok: true, version: '7.4.6' };
+      return { ok: true, version: '7.6.10' };
+    },
+  });
+
+  // The main installation is also in the detected list: it must appear once.
+  assert.equal(probed.length, 3);
+  assert.deepEqual(result.installations.map((entry) => entry.path), [canonical, portable, alias]);
+  const byPath = new Map(result.installations.map((entry) => [entry.path, entry]));
+  assert.equal(byPath.get(canonical).version, '7.6.10');
+  assert.equal(byPath.get(canonical).verified, true);
+  assert.equal(byPath.get(canonical).method, 'msi');
+  assert.equal(byPath.get(canonical).scope, 'system');
+  assert.equal(byPath.get(portable).method, 'portable');
+  assert.equal(byPath.get(portable).verified, true);
+  // The unprobeable Store alias stays listed (last) with no version.
+  assert.equal(byPath.get(alias).verified, false);
+  assert.equal(byPath.get(alias).version, null);
+  assert.equal(result.main.path, canonical);
+});
+
+test('listPwshInstallations reports unprobeable entries with their recorded version', async () => {
+  const env = makeEnv('/tmp/dsh-plan-picker2');
+  const result = await listPwshInstallations({
+    env,
+    plan: {
+      installations: [
+        {
+          path: 'C:\\Tools\\pwsh\\pwsh.exe',
+          directory: 'C:\\Tools\\pwsh',
+          kind: 'portable',
+          scope: 'user',
+          source: 'path',
+          version: '7.5.0',
+        },
+      ],
+    },
+    probe: async () => ({ ok: false }),
+  });
+  assert.equal(result.installations.length, 1);
+  assert.equal(result.installations[0].version, '7.5.0', 'registry/named version kept when the probe fails');
+  assert.equal(result.installations[0].verified, false);
+  assert.equal(result.installations[0].method, 'portable');
+});
 
 test('resolvePwshArchitecture maps the OS architecture, not just the Node binary', () => {
   assert.equal(resolvePwshArchitecture({ PROCESSOR_ARCHITECTURE: 'AMD64' }, 'x64'), 'win-x64');

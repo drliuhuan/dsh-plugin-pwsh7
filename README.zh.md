@@ -14,7 +14,8 @@ Windows 上的 DeepSeek Harness（DSH）插件：把模型侧的 **`pwsh` 工具
 - **安装永远不是自动的，也不会由模型发起。** 缺少 PowerShell 7 时 Web GUI 会弹出安装弹窗；
   只有用户在弹窗或 **设置 → PowerShell 7** 中点击安装，或用户自行安装 PowerShell 7 时才会安装。
 - Web GUI 的设置菜单里新增 **PowerShell 7 页面**：显示可执行文件、版本、安装目录、安装范围与方式，
-  提供**插件自检**、**切回系统默认路由**、**卸载插件自装的用户级安装**，以及**把用户级安装迁移到系统级**。
+  **可在检测到的多个安装中选择插件路由实际运行哪一个**（或保持自动），提供**插件自检**、
+  **切回系统默认路由**、**卸载插件自装的用户级安装**，以及**把用户级安装迁移到系统级**。
 - Web GUI 里另有**安装弹窗**：开机检测到缺失时、以及之后**每次 `pwsh` 运行因缺少 PowerShell 7
   失败时**都会弹出，提供下载按钮与实时进度（已下载字节、百分比、阶段）。关闭弹窗不会中断安装，
   下一次失败运行会再次弹出。
@@ -157,6 +158,15 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
   找不到系统 PowerShell 7 时按 DSH 原生行为回退到 Windows PowerShell 5.1；`PowerShell 5.1`
   路由直接强制该可执行文件，并关闭全部 PowerShell 7 提示词层（基础删除安全规则仍然生效）。
   选择写入 `config.json` 的 `route`，下一条 `pwsh` 命令生效。
+- **安装信息 → 使用的 PowerShell 7**：检测到多个 PowerShell 7 安装时（机器级/当前用户 MSI、插件便携
+  副本、旧版并排副本、Store 别名、Chocolatey、Scoop 或自定义 `PATH` 条目），下拉框选择 `pwsh` 工具
+  实际运行哪一个。默认选项是**自动（插件路由顺序）**，即下文的解析顺序；每个条目显示探测到的版本、
+  安装范围（系统 / 当前用户）、方式、完整路径，并给当前生效的条目标注 `当前`。选择某个条目会写入
+  `config.json` 的 `selectedPwshPath` 并把路由切换到 `plugin`；清除回**自动**只移除该键，不改变
+  当前路由。该选择只影响插件路由，`system` 路由从不参考它。强制 `pwsh5` 路由下下拉框被禁用，
+  并提示先切回插件路由。安装或维护任务运行期间禁止选择。列表为只读（`GET /pwsh7/installations`）；
+  `POST /pwsh7/installation` 用 `{"path": "<绝对的 pwsh.exe 路径>"}` 选择、用 `{"path": null}`
+  清除——相对路径、不存在的路径或文件名不是 `pwsh.exe` 都返回 `400`，任务运行中返回 `409`。
 - **自检**：检查可执行文件解析、PowerShell 主版本、路由、配置有效性、安装/范围一致性、持久 PATH
   条目、`@deepseek-ai/*` 加载、沙箱策略、是否有安装任务在运行，并以 `ok` / `warn` / `fail` 显示详情。
 - **安装/修复**：启动与安装弹窗相同的共享安装任务（用户级），显示实时进度。
@@ -192,9 +202,11 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
   状态，只显示错误行；设置页稍后提供同样的升级动作。
 - **为什么只有一个任务**：弹窗和设置页共用一个协调器，所以无论用户从哪个界面开始安装，进度都一致，
   也不会在 `%LOCALAPPDATA%\dsh\pwsh7\tmp` 的同一个压缩包上互相踩踏。模型的 `shell_router` 工具不会启动安装。
-- **传输**：`GET /pwsh7/state`（快照）、`GET /pwsh7/events`（SSE，进度约 7 帧/秒）、
-  `POST /pwsh7/install`、`POST /pwsh7/cancel`。SSE 负责平滑进度，同时始终保留每 3 秒一次的
-  `/pwsh7/state` 轮询，作为事件流被缓冲时的兜底。这些路由仅限同源，POST 只接受 `application/json`。
+- **传输**：`GET /pwsh7/state`（快照，含 `selection: {path, found}`）、`GET /pwsh7/events`
+  （SSE，进度约 7 帧/秒）、`GET /pwsh7/installations`（设置页下拉框的安装列表）、
+  `POST /pwsh7/installation`（选择 `path`，或传 `null` 清除），以及 `POST /pwsh7/install`、
+  `POST /pwsh7/cancel`。SSE 负责平滑进度，同时始终保留每 3 秒一次的 `/pwsh7/state` 轮询，
+  作为事件流被缓冲时的兜底。这些路由仅限同源，POST 只接受 `application/json`。
 - **失败**：弹窗保留安装器的原始错误，提供“重试”和官方 PowerShell releases 链接；安装失败不影响
   已有的 `pwsh` 路由，直到某次安装成功。
 - **范围**：弹窗属于 Web GUI。纯 CLI/无头组合仍可在 Web 组合存在时使用 `shell_router` 的
@@ -205,15 +217,21 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
 `pwsh` 可执行文件解析顺序：
 
 1. 环境变量 `DSH_PWSH_PATH`
-2. `%LOCALAPPDATA%\dsh\pwsh7\config.json` 的 `pwshPath`
-3. `%ProgramFiles%\PowerShell\7\pwsh.exe`
-4. `%LOCALAPPDATA%\dsh\pwsh7\powershell7\…\pwsh.exe`（便携安装，新版本优先）
-5. `%LOCALAPPDATA%\Programs\PowerShell\7\pwsh.exe`
-6. `PATH` 各目录
-7. `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`（Store 别名）
-8. `%ProgramFiles(x86)%\PowerShell\7\pwsh.exe`
+2. `%LOCALAPPDATA%\dsh\pwsh7\config.json` 的 `selectedPwshPath`（设置 → PowerShell 7 → 安装信息
+   中的显式选择）
+3. 上次安装记录的位置：同一配置文件里的 `pwshPath` / `installed.pwsh.path`
+4. `%ProgramFiles%\PowerShell\7\pwsh.exe`
+5. `%LOCALAPPDATA%\dsh\pwsh7\powershell7\…\pwsh.exe`（便携安装，新版本优先）
+6. `%LOCALAPPDATA%\Programs\PowerShell\7\pwsh.exe`
+7. `PATH` 各目录
+8. `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`（Store 别名）
+9. `%ProgramFiles(x86)%\PowerShell\7\pwsh.exe`
 
-官方 `pwsh-sandbox` 行本身仍支持 `pwshPath` 配置字段；显式配置优先于自动检测。
+所选路径不存在时会被忽略：检测回退到安装记录的位置，再回退到常见位置/PATH，且 `/pwsh7/state` 会
+报告 `selection.found: false`。
+
+官方 `pwsh-sandbox` 行本身仍支持 `pwshPath` 配置字段；该显式行配置在以上解析顺序之前生效，因此优先
+于自动检测（插件的 `selectedPwshPath` 只作用于插件路由）。
 
 ### 路由模式
 
@@ -221,11 +239,12 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
 
 | 路由 | 解析方式 |
 |---|---|
-| `plugin`（默认） | `DSH_PWSH_PATH` → `config.pwshPath` → 常见安装位置（含插件托管的便携安装）→ `PATH`；缺失时抛出安装提示。 |
+| `plugin`（默认） | `DSH_PWSH_PATH` → `selectedPwshPath`（设置页选择）→ 安装记录的 `config.pwshPath` / `installed.pwsh.path` → 常见安装位置（含插件托管的便携安装）→ `PATH`；缺失时抛出安装提示。 |
 | `system` | 只解析系统级位置：`Program Files`、`Program Files (x86)`、`%LOCALAPPDATA%\Programs`、Store 别名、`%LOCALAPPDATA%\dsh\pwsh7` 以外的 `PATH` 条目，最后按原生行为回退到 Windows PowerShell 5.1；忽略 `DSH_PWSH_PATH` 与 `config.pwshPath`。 |
 | `pwsh5` | 始终使用 `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`（Windows PowerShell 5.1）。关闭全部 PowerShell 7 提示词/方言层，但保留用户已存的提示词级别，离开该路由后恢复。 |
 
-设置页可在运行时切换路由（`POST /pwsh7/route`），无需重启。
+设置页可在运行时切换路由（`POST /pwsh7/route`），无需重启。在安装下拉框中选择安装会切换到
+`plugin` 路由以使选择生效；`system` 路由忽略该选择，强制 `pwsh5` 路由会禁用下拉框。
 
 ### 配置文件
 
@@ -236,6 +255,7 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
   "version": 1,
   "route": "plugin",
   "pwshPath": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+  "selectedPwshPath": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
   "installed": {
     "pwsh": {
       "path": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
@@ -248,6 +268,12 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
   "updatedAt": "2026-10-17T00:00:00.000Z"
 }
 ```
+
+`selectedPwshPath` 是增量、可选字段：记录在 设置 → PowerShell 7 → 安装信息 中选中的绝对
+`pwsh.exe` 路径；选择时还会在同一处记录探测到的版本、范围和方式（`selectedPwshMeta`），让安装信息
+各行显示的是被选中的那份副本，而不是上次安装记录的副本。把下拉框改回**自动**会移除这两个键
+（不改变当前路由），恢复插件路由的自动顺序。记录的路径不存在时会被忽略
+（`/pwsh7/state` 报告 `selection.found: false`）。
 
 ## 安装（用户发起）
 
@@ -297,6 +323,8 @@ Windows 应用包按用户安装，因此到达这条路径的 `system` 请求�
 （若主安装已是最新则直接复用）、删除用户级副本，并把配置指向主系统可执行文件。发布不带 MSI 时，
 迁移改为安装当前用户应用包，并以 `method: msix` 记录其可执行文件；已有的机器级 MSI 会原样保留并
 给出提示。
+
+安装、升级、卸载或迁移 PowerShell 7 都会清除显式安装选择，使刚安装或记录的那份副本重新成为生效安装。
 
 没有 Web GUI 时，请自行安装 PowerShell 7（官方 MSI、官方 MSIX 应用包、Store 或 release zip），
 并把 `DSH_PWSH_PATH` 或 `config.json` 指向其 `pwsh.exe`。
@@ -379,20 +407,20 @@ MSI → MSIX 的优先顺序（MSIXBUNDLE 与架构无关）。包管理器缺�
 | 路径 | 作用 |
 |---|---|
 | `index.js` | 裸包名行：安装 `shell_router`、系统提示小节、安装/设置路由与热重载刷新 |
-| `client.js` | 浏览器半边：`shell.overlay` 安装弹窗 + `settings.section` 的 PowerShell 7 设置页、SSE + 轮询、安装/路由/卸载/迁移/自检操作、中英文案 |
+| `client.js` | 浏览器半边：`shell.overlay` 安装弹窗 + 带安装选择下拉框的 `settings.section` PowerShell 7 设置页、SSE + 轮询、安装/路由/选择/卸载/迁移/自检操作、中英文案 |
 | `lib/shipped.mjs` | 从运行中的 DSH 安装（Electron `app.asar`）加载 `@deepseek-ai/*` 包 |
 | `lib/paths.mjs` | PowerShell 7 路径探测、版本探测、`config.json` 读写 |
-| `lib/route.mjs` | 路由模式（plugin/system/pwsh5）持久化、系统默认可执行文件与 pwsh5 解析、安装信息与旧并排副本描述 |
-| `lib/install-plan.mjs` | 从持久 PATH + 注册表识别 MSI/便携/Store/Chocolatey/Scoop/插件安装，并选择升级策略 |
+| `lib/route.mjs` | 路由模式（plugin/system/pwsh5）持久化、显式 `selectedPwshPath` 选择、系统默认可执行文件与 pwsh5 解析、安装信息与旧并排副本描述 |
+| `lib/install-plan.mjs` | 从持久 PATH + 注册表识别 MSI/便携/Store/Chocolatey/Scoop/插件安装，并选择升级策略；`listPwshInstallations()` 枚举所有安装并探测版本，供设置页下拉框使用 |
 | `lib/install.mjs` | 用户级便携安装（官方 zip）；系统级从 release manifest 解析安装器（MSI → MSIX → MSIXBUNDLE）、MSI/便携原地替换/包管理器升级、通过 Windows PowerShell 5.1 的 `Add-AppxPackage` 安装 MSIX/MSIXBUNDLE、旧并排副本清理、winget 回退；进度与阶段回调 |
 | `lib/install-scope.mjs` | 注册表 PATH 写入/移除（保留值类型）、提权探测、Program Files 范围、系统目录旧版本副本枚举 |
 | `lib/elevate.mjs` | 安装辅助：经 UAC 的系统 MSI 升级、验证主安装、清理旧并排副本与 PATH；以及无 MSI 版本用的 `Add-AppxPackage` 辅助脚本，通过 Windows PowerShell 5.1 运行（无需提权） |
-| `lib/state.mjs` | 进程内解析缓存（executor 与工具共用）；缺失运行信号 |
+| `lib/state.mjs` | 进程内解析缓存（executor 与工具共用）；按检测优先级解析（`DSH_PWSH_PATH` → `selectedPwshPath` → 安装记录 → 常见位置/PATH）；缺失运行信号 |
 | `lib/maintenance.mjs` | 删除插件自装的用户级安装（文件、临时目录、托管的 PATH 条目） |
 | `lib/selfcheck.mjs` | 只读自检：可执行文件、版本、路由、配置、安装、PATH、内置包、沙箱、任务、路由表 |
 | `lib/router-features.mjs` | 从裸包名行安装 `shell_router`、系统提示小节、安装协调器与 Web 路由 |
-| `lib/setup-service.mjs` | 单一任务协调器：安装/迁移/卸载/路由、进度快照、取消、`missingSeq` |
-| `lib/setup-routes.mjs` | 八个 `/pwsh7/*` 路由（`state`、`events`、`install`、`cancel`、`route`、`uninstall`、`relocate`、`selfcheck`） |
+| `lib/setup-service.mjs` | 单一任务协调器：安装/迁移/卸载/路由、安装列表/选择、进度快照、取消、`missingSeq`；安装完成后清除显式选择 |
+| `lib/setup-routes.mjs` | 十四个 `/pwsh7/*` 路由（`state`、`events`、`installations`、`installation`、`install`、`cancel`、`route`、`dialect`、`onboarding`、`latest`、`uninstall`、`relocate`、`selfcheck`、`deletion-guard`） |
 | `lib/status.mjs` | `status` / `diagnose` 实现 |
 | `lib/executors/pwsh.mjs` | PowerShell 7 执行器（继承官方 `SandboxPwshExecutor`），按路由分支解析 |
 | `cordis.patch.yml` | bundle patch：停用官方 `pwsh-sandbox`，插入执行器行与裸包名行（仅 Windows） |
@@ -407,8 +435,10 @@ MSI → MSIX 的优先顺序（MSIXBUNDLE 与架构无关）。包管理器缺�
 node --test test/*.test.mjs
 ```
 
-- 141 个测试：137 通过，0 失败，默认跳过 4 个（2 个依赖真实安装路径的环境用例、1 个网络用例、
-  1 个仅在 GitHub Actions 运行的注册表用例）。
+- 共 319 个测试。以 `windows-latest` 的 CI 运行为准：依赖环境用例（真实 `pwsh` 探测、`tar.exe`
+  解压、需显式开启的回收站实测、网络开关控制的真实 GitHub 校验、仅在 GitHub Actions 运行的注册表
+  用例）默认跳过。在非 Windows 主机上，依赖真实 Windows 路径/注册表语义的用例会失败；本次新增的
+  功能用例都是自包含的，任何平台都能运行。
 - 设置 `DSH_PWSH7_NETWORK_TESTS=1` 会启用真实 GitHub release / HEAD 校验。
 - 环境变量覆盖前缀为 `DSH_PWSH7_*`（`APP_ROOT`、`TAR`、`NETWORK_TESTS`）。
 

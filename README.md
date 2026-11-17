@@ -19,9 +19,10 @@ Windows DeepSeek Harness (DSH) bundle that routes the model-facing **`pwsh` tool
   install action there or in **Settings → PowerShell 7**, or when the user installs PowerShell 7
   manually.
 - A **PowerShell 7 settings page** in the Web GUI shows the resolved executable, version, install
-  directory, scope and method, optionally **self-checks** the whole routing stack, **switches
-  routing** back to the system default, **uninstalls** a plugin-managed per-user install, and
-  **migrates** a per-user install to the system scope.
+  directory, scope and method, **picks which detected installation the plugin route runs** (or
+  automatic), optionally **self-checks** the whole routing stack, **switches routing** back to the
+  system default, **uninstalls** a plugin-managed per-user install, and **migrates** a per-user
+  install to the system scope.
 - In the Web GUI, a **setup dialog** opens whenever PowerShell 7 is missing — on load and again on
   every `pwsh` run — with a download button and live progress (bytes, percent, phase). Closing it
   never cancels an install, and the next failed run re-opens it.
@@ -258,6 +259,21 @@ The browser half also registers a **PowerShell 7** page in the Web GUI's setting
   to Windows PowerShell 5.1 when no system PowerShell 7 exists. The `PowerShell 5.1` route forces
   that executable directly and turns every PowerShell 7 prompt layer off. The choice is stored as
   `route` in `config.json` and takes effect for the next `pwsh` command.
+- **Installation → PowerShell 7 to use:** when more than one PowerShell 7 installation is detected
+  — machine or per-user MSI, the plugin's portable copy, a legacy side-by-side copy, the Store
+  alias, Chocolatey, Scoop, or a custom `PATH` entry — a dropdown chooses exactly which executable
+  the `pwsh` tool runs. Its default option is **Automatic (plugin route order)** — the resolution
+  order described below; each entry shows the probed version, installation scope (System / Current
+  user) and method, the full path, and marks the currently active entry as `active`. Choosing an
+  entry persists `selectedPwshPath` in `config.json` and switches the route to `plugin`; clearing
+  back to **Automatic** removes the key and leaves the current route unchanged. The selection only
+  affects the plugin route, and the `system` route never consults it. The picker is disabled while
+  a forced `pwsh5` route is active, with a hint to switch back to the plugin route. Selecting is
+  refused while an install or maintenance job runs.
+  The list is read-only (`GET /pwsh7/installations`); `POST /pwsh7/installation` with
+  `{"path": "<absolute pwsh.exe>"}` selects, and `{"path": null}` clears — a relative path, a path
+  that does not exist or one whose file is not `pwsh.exe` is rejected with `400`, and a running job
+  with `409`.
 - **Self-check:** reports executable resolution, PowerShell major version, route, config validity,
   install/scope consistency, persisted `PATH` entry, shipped-package resolution, sandbox policy, and
   a running install, each as `ok` / `warn` / `fail` with details.
@@ -316,11 +332,13 @@ and in the desktop shell without a second window:
 - **Why one job:** the dialog and the settings page share one coordinator, so whichever surface the
   user starts an install from shows the same progress, and two installs cannot race on the same
   archive under `%LOCALAPPDATA%\dsh\pwsh7\tmp`. The model's `shell_router` tool never starts one.
-- **Transport:** `GET /pwsh7/state` (snapshot), `GET /pwsh7/events` (SSE, progress coalesced to
-  ~7 frames/s), `POST /pwsh7/install`, `POST /pwsh7/cancel`, `POST /pwsh7/dialect`,
-  `POST /pwsh7/onboarding`, `POST /pwsh7/latest`. SSE drives smooth progress; a 3 s
-  `/pwsh7/state` poll stays active as the fallback for carriers that buffer event streams. These
-  routes are same-origin and accept POST bodies only as `application/json`.
+- **Transport:** `GET /pwsh7/state` (snapshot, including `selection: {path, found}`),
+  `GET /pwsh7/events` (SSE, progress coalesced to ~7 frames/s), `GET /pwsh7/installations`
+  (detected installations for the Settings picker) and `POST /pwsh7/installation` (select a
+  `path`, or `null` to clear), plus `POST /pwsh7/install`, `POST /pwsh7/cancel`,
+  `POST /pwsh7/dialect`, `POST /pwsh7/onboarding`, `POST /pwsh7/latest`. SSE drives smooth
+  progress; a 3 s `/pwsh7/state` poll stays active as the fallback for carriers that buffer event
+  streams. These routes are same-origin and accept POST bodies only as `application/json`.
 - **Failure:** the dialog keeps the installer's message, offers `Retry`, and links to the official
   PowerShell releases page. A failed install does not affect `pwsh` routing until one succeeds.
 - **Scope:** the dialog belongs to the Web GUI. A headless/CLI composition still gets `shell_router`
@@ -332,16 +350,23 @@ and in the desktop shell without a second window:
 Resolution order for the pwsh executable:
 
 1. `DSH_PWSH_PATH` environment variable
-2. `pwshPath` in `%LOCALAPPDATA%\dsh\pwsh7\config.json`
-3. `%ProgramFiles%\PowerShell\7\pwsh.exe`
-4. `%LOCALAPPDATA%\dsh\pwsh7\powershell7\…\pwsh.exe` (portable installs, newest first)
-5. `%LOCALAPPDATA%\Programs\PowerShell\7\pwsh.exe`
-6. every `PATH` entry
-7. `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` (Store alias)
-8. `%ProgramFiles(x86)%\PowerShell\7\pwsh.exe`
+2. `selectedPwshPath` in `%LOCALAPPDATA%\dsh\pwsh7\config.json` (the explicit pick in
+   Settings → PowerShell 7 → Installation)
+3. the installation recorded by the last install: `pwshPath` / `installed.pwsh.path` in the same
+   config file
+4. `%ProgramFiles%\PowerShell\7\pwsh.exe`
+5. `%LOCALAPPDATA%\dsh\pwsh7\powershell7\…\pwsh.exe` (portable installs, newest first)
+6. `%LOCALAPPDATA%\Programs\PowerShell\7\pwsh.exe`
+7. every `PATH` entry
+8. `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` (Store alias)
+9. `%ProgramFiles(x86)%\PowerShell\7\pwsh.exe`
 
-The stock `pwsh-sandbox` row still accepts its official `pwshPath` config field; an explicit config
-value takes precedence over automatic detection.
+A selected path that no longer exists is ignored: detection falls back to the recorded installation
+and then to the well-known/PATH order, and `/pwsh7/state` reports `selection.found: false`.
+
+The stock `pwsh-sandbox` row still accepts its official `pwshPath` config field; that explicit row
+config is applied before this resolution order and therefore takes precedence over automatic
+detection (the plugin's `selectedPwshPath` only affects the plugin route).
 
 ### Routing modes
 
@@ -349,11 +374,13 @@ value takes precedence over automatic detection.
 
 | Route | Resolution |
 |---|---|
-| `plugin` (default) | `DSH_PWSH_PATH` → `config.pwshPath` → well-known locations including the plugin-managed portable install → `PATH`; missing PowerShell 7 raises the setup hint. |
+| `plugin` (default) | `DSH_PWSH_PATH` → `selectedPwshPath` (the Settings picker) → the installer-recorded `config.pwshPath` / `installed.pwsh.path` → well-known locations including the plugin-managed portable install → `PATH`; missing PowerShell 7 raises the setup hint. |
 | `system` | System-installed locations only: `Program Files`, `Program Files (x86)`, `%LOCALAPPDATA%\Programs`, the Store alias, `PATH` entries outside `%LOCALAPPDATA%\dsh\pwsh7`, then Windows PowerShell 5.1 as the stock last resort. `DSH_PWSH_PATH` and `config.pwshPath` are ignored. |
 | `pwsh5` | Always `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe` (Windows PowerShell 5.1). Every PowerShell 7 prompt/dialect layer is disabled; the always-on deletion-safety rule keeps applying; the stored prompt level is kept for when the route is left. |
 
 The settings page switches the route at runtime (`POST /pwsh7/route`); no restart is needed.
+Choosing an installation in the picker switches the route to `plugin` so the pick takes effect; the
+`system` route ignores the selection, and a forced `pwsh5` route disables the picker.
 
 ### Config file
 
@@ -364,6 +391,7 @@ The settings page switches the route at runtime (`POST /pwsh7/route`); no restar
   "version": 1,
   "route": "plugin",
   "pwshPath": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
+  "selectedPwshPath": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
   "installed": {
     "pwsh": {
       "path": "C:\\Program Files\\PowerShell\\7\\pwsh.exe",
@@ -376,6 +404,13 @@ The settings page switches the route at runtime (`POST /pwsh7/route`); no restar
   "updatedAt": "2026-10-17T00:00:00.000Z"
 }
 ```
+
+`selectedPwshPath` is additive and optional: it records the absolute `pwsh.exe` chosen in
+Settings → PowerShell 7 → Installation. The picker also stores the probed version, scope and method
+next to it (`selectedPwshMeta`) so the installation rows describe the picked copy rather than the
+last installer-recorded one. Setting the picker back to **Automatic** removes both keys without
+changing the route and restores the automatic plugin-route order. A recorded path that no longer
+exists is ignored (and `/pwsh7/state` reports `selection.found: false`).
 
 ## Installation (user-initiated)
 
@@ -437,6 +472,9 @@ that is already current), removes the per-user copy, and points the config at th
 executable. On a release that publishes no MSI the migration installs the per-user app package
 instead and records its executable with `method: msix`; an older machine-wide MSI is left in place
 with a warning.
+
+Installing, updating, uninstalling or relocating PowerShell 7 clears any explicit installation
+selection, so the copy the operation just installed or recorded becomes the active one again.
 
 To install without the Web GUI, install PowerShell 7 yourself (official MSI, official MSIX app
 package, Store, or release zip) and set `DSH_PWSH_PATH` or `config.json` to its `pwsh.exe`.
@@ -531,20 +569,20 @@ falls back to installing a separate per-user copy: the result names the concrete
 | Path | Role |
 |---|---|
 | `index.js` | Bare package row: installs `shell_router`, the system-prompt section, setup/settings routes, and the reload hook |
-| `client.js` | Browser half: `shell.overlay` setup dialog plus the `settings.section` PowerShell 7 page, SSE + polling, install/route/uninstall/relocate/self-check actions, en/zh copy |
+| `client.js` | Browser half: `shell.overlay` setup dialog plus the `settings.section` PowerShell 7 page with the installation picker, SSE + polling, install/route/select/uninstall/relocate/self-check actions, en/zh copy |
 | `lib/shipped.mjs` | Loads the shipped `@deepseek-ai/*` packages from the running DSH installation (`app.asar`) |
 | `lib/paths.mjs` | PowerShell 7 detection, version probing, `config.json` IO |
-| `lib/route.mjs` | Routing mode (plugin/system/pwsh5) persistence, system-default and pwsh5 executable resolution, install and legacy-copy description |
-| `lib/install-plan.mjs` | Detects MSI/portable/Store/Chocolatey/Scoop/plugin installs from persisted PATH + registry and chooses the upgrade strategy |
+| `lib/route.mjs` | Routing mode (plugin/system/pwsh5) persistence, the explicit `selectedPwshPath` selection, system-default and pwsh5 executable resolution, install and legacy-copy description |
+| `lib/install-plan.mjs` | Detects MSI/portable/Store/Chocolatey/Scoop/plugin installs from persisted PATH + registry and chooses the upgrade strategy; `listPwshInstallations()` enumerates every installation and probes its version for the Settings picker |
 | `lib/install.mjs` | User-scope portable install (official zip); system-scope installer resolution from the release manifest (MSI → MSIX → MSIXBUNDLE), MSI/portable-in-place/package-manager upgrades, MSIX/MSIXBUNDLE install through Windows PowerShell 5.1 (`Add-AppxPackage`), legacy copy cleanup, winget fallback; progress and phase callbacks |
 | `lib/install-scope.mjs` | Registry PATH persistence/removal (preserving value kind), elevation probes, Program Files scope, system versioned-copy enumeration |
 | `lib/elevate.mjs` | Install helpers: the UAC-run MSI upgrade with canonical-version verification and legacy copy/PATH cleanup, plus the `Add-AppxPackage` helper for releases without an MSI, run through Windows PowerShell 5.1 (no elevation) |
-| `lib/state.mjs` | Process-wide resolution cache shared by the executor and the tool; missing-run signal |
+| `lib/state.mjs` | Process-wide resolution cache shared by the executor and the tool; applies the detection priority (`DSH_PWSH_PATH` → `selectedPwshPath` → recorded install → well-known/PATH); missing-run signal |
 | `lib/maintenance.mjs` | Removes a plugin-managed per-user portable install (files, temp dir, managed PATH entries) |
 | `lib/selfcheck.mjs` | Read-only self-check: executable, version, route, config, install, PATH, shipped packages, sandbox, job, routes |
 | `lib/router-features.mjs` | Installs `shell_router`, the system-prompt section, the setup coordinator, and routes from the bare package row |
-| `lib/setup-service.mjs` | Single job coordinator: install/relocate/uninstall/route, progress snapshots, cancel, `missingSeq` |
-| `lib/setup-routes.mjs` | The eight `/pwsh7/*` routes (`state`, `events`, `install`, `cancel`, `route`, `uninstall`, `relocate`, `selfcheck`) |
+| `lib/setup-service.mjs` | Single job coordinator: install/relocate/uninstall/route, installation listing/selection, progress snapshots, cancel, `missingSeq`; clears the explicit selection after installs |
+| `lib/setup-routes.mjs` | The fourteen `/pwsh7/*` routes (`state`, `events`, `installations`, `installation`, `install`, `cancel`, `route`, `dialect`, `onboarding`, `latest`, `uninstall`, `relocate`, `selfcheck`, `deletion-guard`) |
 | `lib/status.mjs` | `status` / `diagnose` implementations |
 | `lib/executors/pwsh.mjs` | PowerShell 7 executor (extends the official `SandboxPwshExecutor`), branches on the route |
 | `cordis.patch.yml` | Bundle patch: disables the stock `pwsh-sandbox`, inserts the executor and bare package rows (Windows only) |
@@ -559,8 +597,11 @@ falls back to installing a separate per-user copy: the result names the concrete
 node --test test/*.test.mjs
 ```
 
-- 141 tests: 137 pass, 0 fail, 4 skipped by default (2 environment-gated real-install probes,
-  1 network-gated live GitHub check, 1 registry test restricted to GitHub Actions runners).
+- 319 tests. The `windows-latest` CI runner is the reference run: environment-gated cases skip by
+  default (the real-`pwsh` probes, `tar.exe` extraction, the opt-in Recycle-Bin probe, the
+  network-gated live GitHub check, and the registry test restricted to GitHub Actions runners).
+  On a non-Windows host the tests that depend on real Windows path/registry semantics fail; every
+  new feature test in this list is hermetic and runs on any platform.
 - `DSH_PWSH7_NETWORK_TESTS=1` enables the live GitHub release / HEAD checks.
 - The environment override prefix is `DSH_PWSH7_*` (`APP_ROOT`, `TAR`, `NETWORK_TESTS`).
 

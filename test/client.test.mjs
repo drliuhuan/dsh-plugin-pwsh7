@@ -40,6 +40,9 @@ const SETTINGS_KEYS = [
   'relocateConfirmButton', 'relocateStarted', 'relocateDone', 'relocateDoneNoPath',
   'relocateConfirmButtonMsix', 'relocateStartedMsix', 'relocateDoneMsix', 'relocateDoneMsixNoPath',
   'actionRelocateHintMsix', 'relocateConfirmMsix', 'updateToSystemMsix', 'installSystemMsix',
+  'pickerLabel', 'pickerAutomatic', 'pickerActive', 'pickerUnverified', 'pickerHint',
+  'pickerSystemHint', 'pickerPwsh5Hint', 'pickerLoading', 'pickerEmpty', 'pickerMissing',
+  'pickerSaving', 'pickerSaved', 'pickerAutomaticSaved',
   'relocateRemoved', 'relocateFailed', 'actionUninstall', 'actionUninstallHint',
   'uninstallConfirm', 'uninstallConfirmButton', 'uninstallDone', 'uninstallWarnings',
   'actionFailed', 'elevationRequired', 'elevationHint', 'busyJob', 'selfcheckRun',
@@ -1010,6 +1013,93 @@ test('the maintenance card has one Update action and offers a system-level upgra
   const post = calls.find((call) => call.url.endsWith('/pwsh7/relocate'));
   assert.ok(post, 'the upgrade goes through the relocate route');
   assert.deepEqual(JSON.parse(post.body), { removeUser: true, method: 'auto' });
+});
+
+test('the installation picker lists every detected installation and persists a pick', async () => {
+  const canonical = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
+  const picker = {
+    ok: true,
+    selected: null,
+    active: PWSH_PATH,
+    installations: [
+      {
+        path: canonical,
+        version: '7.6.10',
+        scope: 'system',
+        method: 'msi',
+        source: 'msi',
+        verified: true,
+        active: false,
+        selected: false,
+      },
+      {
+        path: PWSH_PATH,
+        version: '7.6.7',
+        scope: 'user',
+        method: 'portable',
+        source: 'plugin',
+        verified: true,
+        active: true,
+        selected: false,
+      },
+    ],
+  };
+  const calls = [];
+  const booted = boot(new Map([[0, makeState()], [7, picker]]), {
+    fetch: (url, options) => {
+      calls.push({ url: String(url), options: options || {} });
+      const body = String(url).endsWith('/pwsh7/installation')
+        ? { ok: true, selected: canonical, state: makeState() }
+        : makeState();
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) });
+    },
+  });
+  const tree = renderSlot(booted, 'settings.section');
+  const text = textOf(tree);
+  assert.ok(text.includes('PowerShell 7 to use'), 'picker label');
+  assert.ok(text.includes('Automatic (plugin route order)'), 'automatic option');
+
+  const selects = findNode(tree, (node) => node.type === 'select');
+  assert.equal(selects.length, 1, 'one picker select');
+  const options = findNode(tree, (node) => node.type === 'option');
+  assert.ok(options.some((option) => textOf(option).includes('v7.6.10')));
+  assert.ok(options.some((option) => textOf(option).includes('v7.6.7')));
+  assert.ok(options.some((option) => textOf(option).includes('active')));
+  assert.equal(selects[0].props.value, '', 'automatic order is the default selection');
+
+  selects[0].props.onChange({ target: { value: canonical } });
+  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setImmediate(resolve));
+  const post = calls.find((call) => call.url.endsWith('/pwsh7/installation'));
+  assert.ok(post, 'the pick was posted');
+  assert.deepEqual(JSON.parse(post.options.body), { path: canonical });
+  booted.captured.dispose();
+});
+
+test('the installation picker shows the recorded pick and is disabled on the pwsh5 route', () => {
+  const canonical = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
+  const selectedState = makeState({ route: 'pwsh5', selection: { path: canonical, found: true } });
+  const booted = boot(new Map([[0, selectedState], [7, {
+    ok: true,
+    selected: canonical,
+    active: canonical,
+    installations: [{
+      path: canonical,
+      version: '7.6.10',
+      scope: 'system',
+      method: 'msi',
+      source: 'msi',
+      verified: true,
+      active: true,
+      selected: true,
+    }],
+  }]]));
+  const tree = renderSlot(booted, 'settings.section');
+  const select = findNode(tree, (node) => node.type === 'select')[0];
+  assert.equal(select.props.value, canonical, 'the recorded pick preselects the dropdown');
+  assert.equal(select.props.disabled, true, 'a forced pwsh5 route ignores the picker');
+  assert.ok(textOf(tree).includes('Switch to the plugin route'), 'the disabled reason is shown');
+  booted.captured.dispose();
 });
 
 test('the settings page only offers uninstall when the install is removable', () => {
