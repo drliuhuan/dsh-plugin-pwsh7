@@ -452,12 +452,16 @@ the ZIP/OPC package magic, and installs it with `Add-AppxPackage` run through **
 5.1** (the Appx cmdlets are not available in PowerShell 7). Windows app packages install per user,
 so a `system` request that reaches this path completes as a **current-user installation** — no UAC
 prompt — and the status page shows scope “Current user” and method “Official MSIX app package (per
-user)”. The job resolves the registered executable with `Get-AppxPackage Microsoft.PowerShell` →
+user)”. The job resolves the registered executable with `Get-AppxPackage Microsoft.PowerShell` (or `Microsoft.PowerShell-LTS` for an LTS bundle) →
 `<InstallLocation>\pwsh.exe` (falling back to `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`),
 probes its version, and records it as the installation with `method: msix`; the result message
 explains that the release publishes no MSI. An older machine-wide MSI install is left untouched and
 a warning says Windows Terminal keeps launching that older installation until it is upgraded or
-uninstalled, while DSH uses the app package. If a running PowerShell 7 instance blocks the update,
+uninstalled, while DSH uses the app package. Versioned `…\PowerShell\7\<version>` legacy side-by-side
+copies cannot be removed without elevation on this path: the job drops them from its own process
+`PATH`, deletes any it can, and otherwise names the directories that (and whose machine `PATH` entry)
+still need an elevated manual removal. The finished install shows this result message and its
+warnings in the setup dialog and in Settings. If a running PowerShell 7 instance blocks the update,
 the helper retries with `Add-AppxPackage -ForceApplicationShutdown`; if Windows blocks sideloading
 (for example `0x80073CFF`), the error explains how to allow sideloading or to use the current-user
 portable ZIP.
@@ -514,13 +518,13 @@ owns it:
 |---|---|---|
 | Machine-wide official MSI | uninstall registry product `PowerShell 7-x64` (HKLM) | `msiexec /i … ALLUSERS=1` in place, one UAC prompt |
 | Per-user MSI | uninstall product in HKCU | `msiexec /i … ALLUSERS=0` in place (no elevation) |
-| Official MSIX app package | `Get-AppxPackage Microsoft.PowerShell`, or the `method: "msix"` entry recorded in `config.json` | install the newest resolved MSIX/MSIXBUNDLE with `Add-AppxPackage` (per user, no elevation) and record the new executable |
+| Official MSIX app package | `Get-AppxPackage Microsoft.PowerShell` (LTS bundles register as `Microsoft.PowerShell-LTS`), or the `method: "msix"` entry recorded in `config.json` | install the newest resolved MSIX/MSIXBUNDLE with `Add-AppxPackage` (per user, no elevation) and record the new executable |
 | Manual/portable ZIP on `PATH` | `pwsh.exe` in a directory with no MSI/Store/package-manager marker | replace that directory: rename old → copy new → verify file version → delete old; rollback on failure. The PATH entry is unchanged |
 | Chocolatey | `…\chocolatey\bin\pwsh.exe` shim | `choco upgrade powershell-core -y` (elevated when needed) |
 | Scoop | `…\scoop\shims\pwsh.exe` shim | `scoop update pwsh` (global: `-g`, elevated) |
 | Microsoft Store | `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` | `winget upgrade --id Microsoft.PowerShell --source msstore`; if winget is absent, the error explains how to update from Store |
 | Plugin-managed per-user copy | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | download the latest ZIP into a new version directory and repoint the config |
-| Legacy plugin system side-by-side copy | `%ProgramFiles%\PowerShell\7\<version>` | upgrade the canonical MSI when the release publishes one, then remove the versioned copy and its PATH entry |
+| Legacy plugin system side-by-side copy | `%ProgramFiles%\PowerShell\7\<version>` | upgrade the canonical MSI when the release publishes one, then remove the versioned copy and its PATH entry. A release without an MSI installs the per-user app package instead and reports the leftover copy/PATH entry (removal needs elevation) |
 | `DSH_PWSH_PATH` / row `pwshPath` override | explicit override wins | **refused** with an explanation; update that copy with its own installer or remove the override |
 | Unknown / missing | nothing detected | install the official installer: the canonical Program Files MSI when the release publishes one, otherwise the per-user MSIX app package |
 
@@ -597,7 +601,7 @@ falls back to installing a separate per-user copy: the result names the concrete
 node --test test/*.test.mjs
 ```
 
-- 319 tests. The `windows-latest` CI runner is the reference run: environment-gated cases skip by
+- 331 tests. The `windows-latest` CI runner is the reference run: environment-gated cases skip by
   default (the real-`pwsh` probes, `tar.exe` extraction, the opt-in Recycle-Bin probe, the
   network-gated live GitHub check, and the registry test restricted to GitHub Actions runners).
   On a non-Windows host the tests that depend on real Windows path/registry semantics fail; every

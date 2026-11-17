@@ -168,6 +168,19 @@ test('the app-package script installs with Add-AppxPackage and reports the execu
   assert.ok(!script.includes('-Verb RunAs'));
 });
 
+test('the app-package script looks up the identity it was given and stays ASCII for PS 5.1', () => {
+  const script = appxInstallScript({
+    packagePath: 'C:\\Temp\\PowerShell-LTS-7.6.11.msixbundle',
+    markerPath: 'C:\\Temp\\result.json',
+    packageName: 'Microsoft.PowerShell-LTS',
+  });
+  assert.ok(script.includes("Get-AppxPackage -Name 'Microsoft.PowerShell-LTS'"));
+  assert.ok(script.includes('Start-Sleep -Milliseconds 500'), 'registration is polled, not raced');
+  // BOM-less Windows PowerShell 5.1 scripts are decoded with the ANSI code page: no CJK literals.
+  assert.equal(/[\u4e00-\u9fff]/.test(script), false);
+  assert.equal(/\$first -match '[^']*0x80073CFB/.test(script), false, 'already-installed is not an in-use retry');
+});
+
 test('the app-package screen escapes quotes and reports the registered package', async () => {
   const result = await runAppxInstall({
     env: { ...process.env, SystemRoot: 'C:\\Windows' },

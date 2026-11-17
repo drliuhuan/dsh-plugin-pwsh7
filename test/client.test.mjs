@@ -31,7 +31,7 @@ const SETTINGS_KEYS = [
   'labelPathEntry', 'yes', 'no', 'unknown', 'scopeUser', 'scopeSystem', 'methodPortable',
   'methodWinget', 'methodAuto', 'methodExisting', 'methodMsi', 'methodLegacyPortable',
   'methodStore', 'methodChocolatey', 'methodScoop', 'methodMsix',
-  'manualMsi', 'manualZip', 'manualUpgradeMsi',
+  'manualMsi', 'manualZip', 'manualUpgradeMsi', 'manualUpgradeZip',
   'manualMsix', 'manualMsixBundle', 'manualUpgradeMsix', 'manualUpgradeMsixBundle',
   'installedNone', 'routePlugin', 'routeSystem',
   'routePwsh5', 'routePluginHint', 'routeSystemHint', 'routePwsh5Hint', 'routeSystemPath',
@@ -1162,6 +1162,63 @@ test('an available update in Settings offers a manual MSI upgrade link', () => {
   assert.ok(text.includes('Manual MSI upgrade'));
   const links = findNode(tree, (node) => node.type === 'a' && typeof node.props.href === 'string');
   assert.ok(links.some((link) => link.props.href.endsWith('7.7.0-win-x64.msi')));
+});
+
+test('a finished install renders its result message and warnings', () => {
+  const tree = renderDialog({
+    found: true,
+    phase: 'done',
+    missingSeq: 1,
+    version: '7.7.0',
+    path: 'C:\\Users\\Tester\\AppData\\Local\\Microsoft\\WindowsApps\\pwsh.exe',
+    installRoot: 'C:\\root',
+    releasesUrl: 'https://example.test/releases/latest',
+    result: {
+      ok: true,
+      method: 'msix',
+      scope: 'user',
+      version: '7.7.0',
+      message: 'release v7.7.0 publishes no MSI; Windows installs app packages per user',
+      warnings: ['the machine-wide installation was left untouched'],
+    },
+  });
+  const text = textOf(tree);
+  assert.match(text, /installed/i);
+  assert.ok(text.includes('publishes no MSI'), 'the install explanation is shown');
+  assert.ok(text.includes('machine-wide installation was left untouched'), 'warnings are shown');
+});
+
+test('a zip installer kind is not labelled as an MSI download', () => {
+  const state = makeState({
+    latest: {
+      version: '7.7.0',
+      current: '7.6.7',
+      updateAvailable: true,
+      checkedAt: 1,
+      error: null,
+      msiUrl: null,
+      zipUrl: 'https://example.test/PowerShell-7.7.0-win-x64.zip',
+      installerKind: 'zip',
+      installerUrl: 'https://example.test/PowerShell-7.7.0-win-x64.zip',
+    },
+  });
+  const text = textOf(renderSettings(new Map([[0, state]])));
+  assert.ok(text.includes('Manual ZIP upgrade'));
+  assert.equal(text.includes('Manual MSI upgrade'), false);
+});
+
+test('the settings page shows the last install result message and warnings', () => {
+  const state = makeState({ result: {
+    ok: true,
+    method: 'msix',
+    scope: 'user',
+    version: '7.7.0',
+    message: 'release v7.7.0 publishes no MSI; Windows installs app packages per user',
+    warnings: ['the machine-wide installation was left untouched'],
+  } });
+  const text = textOf(renderSettings(new Map([[0, state]])));
+  assert.ok(text.includes('publishes no MSI'));
+  assert.ok(text.includes('machine-wide installation was left untouched'));
 });
 
 test('a release without an MSI offers the MSIX bundle upgrade link', () => {

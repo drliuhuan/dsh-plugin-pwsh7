@@ -326,6 +326,31 @@ test('describeInstall reports the plugin-managed per-user copy as removable', (t
   assert.equal(systemInstall.userCopy, true);
 });
 
+test('describeInstall treats an app-package alias as its PATH entry', (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const aliasDir = W.normalize(W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps'));
+  const alias = W.join(aliasDir, 'pwsh.exe');
+  const installExe = W.normalize(W.join(env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe'));
+  writeFile(alias);
+  writeFile(installExe);
+  const install = describeInstall({
+    env: { ...env, PATH: [W.join(base, 'bin'), aliasDir].join(';') },
+    state: fakeState({
+      found: true,
+      pwshPath: installExe,
+      config: {
+        version: 1,
+        route: 'plugin',
+        installed: { pwsh: { path: installExe, method: 'msix', scope: 'user', version: '7.7.0' } },
+      },
+    }),
+  });
+  // The package directory is never on PATH: the execution alias exposes the command.
+  assert.equal(install.pathEntry, true);
+  assert.equal(install.method, 'msix');
+});
+
 test('describeInstall describes the picked installation instead of the recorded one', (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);

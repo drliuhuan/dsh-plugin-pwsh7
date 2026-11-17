@@ -91,6 +91,7 @@
     manualUpgradeMsix: 'Manual MSIX upgrade',
     manualUpgradeMsixBundle: 'Manual MSIX bundle upgrade',
     manualZip: 'Portable ZIP',
+    manualUpgradeZip: 'Manual ZIP upgrade',
     manualUpgradeMsi: 'Manual MSI upgrade',
     retryHint: 'If the download keeps failing, install PowerShell 7 from {url}, then try again.',
     pathLabel: 'Install location',
@@ -210,7 +211,7 @@
     pickerAutomaticSaved: 'Selection cleared; the plugin route order is used again.',
     routeSystemPath: 'The system default currently resolves to {path}.',
     routeSystemMissing: 'No system-wide PowerShell 7 was found; the pwsh tool will fall back to Windows PowerShell 5.1.',
-    legacySystemHint: 'The active executable is a versioned copy that an older plugin release extracted into the system folder. Update replaces the main system installation with the official installer (MSI, or the MSIX app package when a release publishes no MSI) and removes the extra copy; that main installation is what Windows Terminal launches.',
+    legacySystemHint: 'The active executable is a versioned copy that an older plugin release extracted into the system folder; Windows Terminal launches the main installation instead. An MSI-release update replaces that main installation with the official MSI and removes the extra copy; a release that publishes no MSI installs the per-user MSIX app package and leaves this copy (and its machine PATH entry) for an elevated manual removal.',
     routeSaving: 'Switching the route…',
     routeSaved: 'Routing switched to {mode}.',
     actionInstall: 'Install for current user',
@@ -299,6 +300,7 @@
     manualUpgradeMsix: '手动升级 MSIX',
     manualUpgradeMsixBundle: '手动升级 MSIX 应用包',
     manualZip: '便携 ZIP',
+    manualUpgradeZip: '手动升级 ZIP',
     manualUpgradeMsi: '手动升级 MSI',
     retryHint: '如果下载一直失败，请从 {url} 安装 PowerShell 7，然后重试。',
     pathLabel: '安装位置',
@@ -418,7 +420,7 @@
     pickerAutomaticSaved: '已清除选择，重新使用插件路由顺序。',
     routeSystemPath: '系统默认目前解析到 {path}。',
     routeSystemMissing: '没有找到系统范围的 PowerShell 7，pwsh 工具将回退到 Windows PowerShell 5.1。',
-    legacySystemHint: '当前可执行文件是旧版插件解压到系统目录的带版本号副本。升级会用官方安装器（MSI；若该版本不提供 MSI，则为 MSIX 应用包）替换主安装并删除这个多余副本；Windows Terminal 启动的正是主安装。',
+    legacySystemHint: '当前可执行文件是旧版插件解压到系统目录的带版本号副本；Windows Terminal 启动的其实是主安装。带 MSI 的版本升级会用官方 MSI 替换主安装并删除这个多余副本；不提供 MSI 的版本改为安装当前用户的 MSIX 应用包，并保留该副本及其系统 PATH 条目，需要以管理员权限手动删除。',
     routeSaving: '正在切换路由…',
     routeSaved: '已切换到{mode}。',
     actionInstall: '为当前用户安装',
@@ -1326,6 +1328,7 @@
       var kind = typeof latestInfo.installerKind === 'string' ? latestInfo.installerKind : null;
       if (kind === 'msixbundle') return t(upgrade ? 'manualUpgradeMsixBundle' : 'manualMsixBundle');
       if (kind === 'msix') return t(upgrade ? 'manualUpgradeMsix' : 'manualMsix');
+      if (kind === 'zip') return t(upgrade ? 'manualUpgradeZip' : 'manualZip');
       return t(upgrade ? 'manualUpgradeMsi' : 'manualMsi');
     }
     function manualLinkRow(key, installerLabel) {
@@ -1426,6 +1429,24 @@
               : interpolate(t('installedNoVersion'), { path: host.path || host.installRoot || '' }))
         )
       ));
+      // The installer result can explain what the summary line cannot: a release without an MSI
+      // installs the per-user app package, and older machine-wide copies may still win on PATH.
+      var doneResult = host.result !== null && typeof host.result === 'object' ? host.result : null;
+      if (doneResult !== null) {
+        if (typeof doneResult.message === 'string' && doneResult.message.length > 0) {
+          body.push(React.createElement('p', { key: 'result-message', className: 'pwsh7_hint' }, doneResult.message));
+        }
+        var resultWarnings = Array.isArray(doneResult.warnings)
+          ? doneResult.warnings.filter(function (entry) { return typeof entry === 'string' && entry.length > 0; })
+          : [];
+        for (var warnIndex = 0; warnIndex < resultWarnings.length; warnIndex += 1) {
+          body.push(React.createElement(
+            'p',
+            { key: 'result-warning-' + warnIndex, className: 'pwsh7_hint' },
+            '⚠ ' + resultWarnings[warnIndex]
+          ));
+        }
+      }
     } else if (host.found === true && !failed && !cancelled) {
       // Compact confirmation: version, executable, scope and source — the facts the user asked to
       // see — plus the latest-release row when an update exists.
@@ -2492,6 +2513,26 @@
       ]
     ));
 
+    var installResultNotes = [];
+    if (host.result !== null && typeof host.result === 'object') {
+      if (typeof host.result.message === 'string' && host.result.message.length > 0) {
+        installResultNotes.push(React.createElement(
+          'p',
+          { key: 'result-message', className: 'pwsh7_actionHint' },
+          host.result.message
+        ));
+      }
+      var installResultWarnings = Array.isArray(host.result.warnings)
+        ? host.result.warnings.filter(function (entry) { return typeof entry === 'string' && entry.length > 0; })
+        : [];
+      for (var resultIndex = 0; resultIndex < installResultWarnings.length; resultIndex += 1) {
+        installResultNotes.push(React.createElement(
+          'p',
+          { key: 'result-warning-' + resultIndex, className: 'pwsh7_actionHint' },
+          '⚠ ' + installResultWarnings[resultIndex]
+        ));
+      }
+    }
     var installCard = React.createElement(
       'section',
       { key: 'install', className: 'pwsh7_card' },
@@ -2505,6 +2546,9 @@
       ),
       host.legacySystemPaths.length > 0
         ? React.createElement('p', { key: 'legacy-hint', className: 'pwsh7_actionHint' }, t('legacySystemHint'))
+        : null,
+      installResultNotes.length > 0
+        ? React.createElement('div', { key: 'result-notes' }, installResultNotes)
         : null
     );
 
@@ -2632,6 +2676,7 @@
       var kind = textOrNull(latestLinks.installerKind);
       if (kind === 'msixbundle') return t(upgrade ? 'manualUpgradeMsixBundle' : 'manualMsixBundle');
       if (kind === 'msix') return t(upgrade ? 'manualUpgradeMsix' : 'manualMsix');
+      if (kind === 'zip') return t(upgrade ? 'manualUpgradeZip' : 'manualZip');
       return t(upgrade ? 'manualUpgradeMsi' : 'manualMsi');
     }
     var manualZipUrl = textOrNull(latestLinks.zipUrl)

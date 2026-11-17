@@ -44,6 +44,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   accepted only when its version matches the release, and `PowerShellPreview-*` bundles are
   ignored). MSI releases keep the existing in-place `msiexec` upgrade, version verification and
   legacy side-by-side cleanup.
+- The update path no longer falls back to winget/Microsoft Store after this plugin installed the
+  app package: the WindowsApps alias is classified as a Store install by the planner, so the
+  recorded `method: msix` now keeps later system updates and relocations on the app-package channel
+  (and a later MSI release still updates the package instead of installing a side-by-side MSI).
+- LTS bundles are installed under their own package identity (`Microsoft.PowerShell-LTS`), and
+  `Get-AppxPackage` is polled briefly after `Add-AppxPackage` instead of racing package registration.
+- The app-package path now reports (and best-effort removes) legacy `…\PowerShell\7\<version>`
+  copies and their machine `PATH` entries, which need elevation and are otherwise left in place; the
+  finished install's result message and warnings are rendered in the setup dialog and Settings.
+- The executable that passes the version probe is the one recorded, not an InstallLocation path that
+  failed to run; the app-execution alias is used as the fallback.
+- Installer resolution only accepts assets whose embedded version matches the release tag; the
+  redirect/HEAD fallback probes the LTS bundle name too, reports probe failures as network errors
+  instead of "no asset", and cancels the ranged-GET body.
+- The MSIX helper no longer retries the in-use path for "already installed" (0x80073CFB) or relies
+  on CJK literals in a BOM-less Windows PowerShell 5.1 script.
 
 ### Added
 
