@@ -58,11 +58,11 @@
     titleReady: 'PowerShell 7 setup',
     lead: 'PowerShell 7 was not found on this machine.',
     leadReady: 'PowerShell 7 is installed. Confirm the setup choices below.',
-    body: 'Install location: {path}. The default system install runs the official installer (the Windows MSI, or the signed MSIX app package when a release publishes no MSI); choose the current-user option for a portable copy.',
+    body: 'Install location: {path}. The system install runs the official MSI (this plugin never installs a Microsoft Store/MSIX copy); choose the current-user option for a portable ZIP.',
     scopeLabel: 'Installation scope',
     userScope: 'Current user (portable ZIP, no administrator rights)',
-    systemScope: 'System (official installer; UAC only when the MSI runs)',
-    hint: 'About 100 MB for the portable ZIP (the MSIX app bundle is larger). The system install upgrades %ProgramFiles%\\PowerShell\\7 with the official MSI; when a release publishes no MSI (for example 7.7.0), the signed MSIX app package is installed for your Windows account instead. The current-user option extracts the portable ZIP without elevation.',
+    systemScope: 'System (official MSI; one UAC prompt when it runs)',
+    hint: 'About 100 MB for the portable ZIP. The system install upgrades %ProgramFiles%\\PowerShell\\7 with the official MSI; a release that publishes no MSI (for example 7.7.0) cannot be installed system-wide, so install the current-user portable ZIP instead. No Microsoft Store (MSIX) package is used.',
     download: 'Download and install',
     later: 'Not now',
     cancel: 'Cancel download',
@@ -205,6 +205,8 @@
     pickerPwsh5Hint: 'The pwsh5 route is forced and ignores the selection. Switch to the plugin route to choose a PowerShell 7 installation.',
     pickerLoading: 'Looking for PowerShell 7 installations…',
     pickerEmpty: 'No PowerShell 7 installations were detected.',
+    pickerUnsupported: 'unsupported',
+    pickerUnsupportedHint: 'Microsoft Store (MSIX) copies are listed but cannot be chosen: they cannot be launched reliably from a child process. Use the official MSI or the portable user-level ZIP.',
     pickerMissing: 'The selected installation no longer exists ({path}); automatic detection is used instead.',
     pickerSaving: 'Saving the installation selection…',
     pickerSaved: 'PowerShell 7 installation selection saved.',
@@ -267,11 +269,11 @@
     titleReady: 'PowerShell 7 设置',
     lead: '这个部署会把 pwsh 工具交给 PowerShell 7 执行，但这台电脑上没有找到 pwsh.exe。',
     leadReady: '已检测到 PowerShell 7。请在下方确认本次部署的设置。',
-    body: '安装位置：{path}。默认走官方安装器系统级安装（Windows MSI；若该版本不提供 MSI，则用签名 MSIX 应用包）；需要便携副本时可选当前用户。',
+    body: '安装位置：{path}。系统级安装运行官方 MSI（本插件从不安装 Microsoft Store/MSIX 副本）；需要便携副本时可选当前用户。',
     scopeLabel: '安装范围',
     userScope: '当前用户（便携 ZIP，无需管理员权限）',
-    systemScope: '系统（官方安装器；仅运行 MSI 时弹 UAC）',
-    hint: '便携 ZIP 约 100 MB（MSIX 应用包更大）。系统级安装用官方 MSI 原地升级 %ProgramFiles%\\PowerShell\\7；若该版本不提供 MSI（例如 7.7.0），则改为给当前 Windows 账户安装签名 MSIX 应用包。当前用户选项解压便携 ZIP，无需提权。',
+    systemScope: '系统（官方 MSI；运行时弹一次 UAC）',
+    hint: '便携 ZIP 约 100 MB。系统级安装用官方 MSI 原地升级 %ProgramFiles%\\PowerShell\\7；若该版本不提供 MSI（例如 7.7.0），则无法系统级安装，请改用当前用户便携 ZIP。不会使用 Microsoft Store（MSIX）应用包。',
     download: '下载并安装',
     later: '稍后',
     cancel: '取消下载',
@@ -414,6 +416,8 @@
     pickerPwsh5Hint: '当前强制使用 pwsh5，选择被忽略。请先切换到插件路由再选择 PowerShell 7 安装。',
     pickerLoading: '正在查找 PowerShell 7 安装…',
     pickerEmpty: '没有检测到其他 PowerShell 7 安装。',
+    pickerUnsupported: '不支持',
+    pickerUnsupportedHint: 'Microsoft Store（MSIX）副本会列出但不可选：它无法被子进程可靠启动。请改用官方 MSI 或用户级便携 ZIP。',
     pickerMissing: '所选安装已不存在（{path}），将改用自动检测。',
     pickerSaving: '正在保存安装选择…',
     pickerSaved: '已保存 PowerShell 7 安装选择。',
@@ -2265,13 +2269,20 @@
         var versionText = entry.version === null || entry.version === undefined
           ? t('pickerUnverified')
           : 'v' + entry.version;
+        var unsupported = entry.supported === false;
         var optionLabel = versionText
           + ' · ' + scopeLabel(entry.scope)
           + ' · ' + methodLabel(entry.method)
-          + (entry.active === true ? ' · ' + t('pickerActive') : '');
+          + (entry.active === true ? ' · ' + t('pickerActive') : '')
+          + (unsupported ? ' · ' + t('pickerUnsupported') : '');
         options.push(React.createElement(
           'option',
-          { key: 'entry-' + index, value: entry.path, title: entry.path },
+          {
+            key: 'entry-' + index,
+            value: entry.path,
+            title: entry.reason !== null && entry.reason !== undefined ? entry.reason : entry.path,
+            disabled: unsupported
+          },
           optionLabel + ' — ' + entry.path
         ));
       }
@@ -2302,6 +2313,9 @@
               : null)),
         host.selection !== null && host.selection.path !== null && host.selection.found !== true
           ? React.createElement('p', { key: 'missing', className: 'pwsh7_hint' }, interpolate(t('pickerMissing'), { path: host.selection.path }))
+          : null,
+        list.some(function (entry) { return entry.supported === false; })
+          ? React.createElement('p', { key: 'unsupported', className: 'pwsh7_hint' }, t('pickerUnsupportedHint'))
           : null,
         busyAction === 'installation'
           ? React.createElement('p', { key: 'saving', className: 'pwsh7_hint' }, t('pickerSaving'))

@@ -4,7 +4,7 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] - 2026-11-17
+## [0.7.0] - 2026-11-25
 ### Added
 
 - **PowerShell 7 installation picker** in Settings → PowerShell 7 → Installation. When the machine
@@ -30,6 +30,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Installing, updating, uninstalling or relocating PowerShell 7 clears the explicit selection, so
   the freshly installed or recorded copy becomes the active one again; selecting is refused while
   an install or maintenance job is running.
+
+
+### Changed
+
+- **Installation is limited to two mechanisms**: the official MSI (`scope: "system"`) and the
+  portable ZIP (`scope: "user"`). The winget install path and its fallback were removed, and the
+  MSIX/MSIXBUNDLE app-package installer (added in 0.6.3 for releases without an MSI) is no longer
+  used: a system install of a release that publishes no MSI (PowerShell 7.7.0) now fails with an
+  actionable error naming the current-user portable ZIP as the supported alternative. A recorded
+  `method: msix` installation is not updated in place either.
+- **Microsoft Store (MSIX) PowerShell is never auto-selected.** The `WindowsApps` app-execution
+  alias is excluded from `candidatePwshPaths`, `findPwsh`, `systemPwshCandidates` and from the
+  upgrade planner's choice of the main installation; `/pwsh7/state` adds a note when only an MSIX
+  copy exists. The Settings picker still lists such copies but marks them `supported: false` and
+  disables their option; `POST /pwsh7/installation` refuses them with an explanation.
+- The latest-release check resolves the official **MSI** only, so the setup dialog never offers an
+  app-package download or an "install the app package" action.
+- The READMEs and this entry document the MSI/ZIP-only contract; the 0.6.3 app-package path is
+  superseded by this policy.
 
 ## [0.6.3] - 2026-11-17
 ### Fixed

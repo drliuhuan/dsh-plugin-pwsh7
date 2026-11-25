@@ -249,7 +249,8 @@ test('start rejects an unsupported method', (t) => {
   });
   t.after(() => service.dispose());
   assert.throws(() => service.start('bogus'), /unsupported install method/);
-  assert.deepEqual([...SETUP_METHODS], ['auto', 'portable', 'msi', 'winget']);
+  assert.deepEqual([...SETUP_METHODS], ['auto', 'portable', 'msi']);
+  assert.throws(() => service.start('winget'), /unsupported install method/);
 });
 
 // ---------------------------------------------------------------------------

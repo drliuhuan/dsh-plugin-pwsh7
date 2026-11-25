@@ -184,7 +184,8 @@ test('resolveSystemPwsh follows the contract order', (t) => {
   writeFile(candidates.pathBin);
   assert.equal(resolveSystemPwsh(env), candidates.pathBin);
   writeFile(candidates.store);
-  assert.equal(resolveSystemPwsh(env), candidates.store);
+  // A Microsoft Store (MSIX) alias is never a system default.
+  assert.equal(resolveSystemPwsh(env), candidates.pathBin);
   writeFile(candidates.localPrograms);
   assert.equal(resolveSystemPwsh(env), candidates.localPrograms);
   writeFile(candidates.programFilesX86);

@@ -95,10 +95,9 @@ test('candidatePwshPaths keeps the contract order', (t) => {
   );
   assert.ok(paths.includes(W.join(base, 'bin', 'pwsh.exe')));
   assert.ok(paths.includes(W.join(base, 'tools', 'pwsh.exe')));
-  assert.ok(
-    paths.indexOf(W.join(base, 'localappdata', 'Microsoft', 'WindowsApps', 'pwsh.exe')) >
-      paths.indexOf(W.join(base, 'tools', 'pwsh.exe')),
-  );
+  // The Microsoft Store (MSIX) app-execution alias is never an automatic candidate: it exists on
+  // disk but a child process frequently cannot launch it. Settings lists it as unsupported.
+  assert.ok(!paths.includes(W.join(base, 'localappdata', 'Microsoft', 'WindowsApps', 'pwsh.exe')));
   assert.ok(
     paths.includes(W.join(base, 'Program Files (x86)', 'PowerShell', '7', 'pwsh.exe')),
   );

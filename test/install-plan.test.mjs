@@ -261,14 +261,17 @@ test('planUpgrade covers every installation kind', (t) => {
   const portable = planUpgrade({ kind: 'portable', scope: 'system', directory: canonical }, { env, root });
   assert.equal(portable.strategy, 'zip-in-place');
 
-  assert.equal(planUpgrade({ kind: 'store', scope: 'user', directory: 'C:\\Store', path: 'C:\\Store\\pwsh.exe' }, { env, root }).strategy, 'store');
+  // A Microsoft Store (MSIX) copy is never upgraded in place: DSH only installs the MSI or the ZIP.
+  const store = planUpgrade({ kind: 'store', scope: 'user', directory: 'C:\\Store', path: 'C:\\Store\\pwsh.exe' }, { env, root });
+  assert.equal(store.strategy, 'refuse');
+  assert.match(store.reason, /Microsoft Store|MSIX/i);
   assert.equal(planUpgrade({ kind: 'chocolatey', scope: 'system', directory: 'C:\\Choco', path: 'C:\\Choco\\pwsh.exe' }, { env, root }).strategy, 'chocolatey');
   assert.equal(planUpgrade({ kind: 'scoop', scope: 'user', directory: 'C:\\Scoop', path: 'C:\\Scoop\\pwsh.exe' }, { env, root }).strategy, 'scoop');
   assert.equal(planUpgrade({ kind: 'portable', explicit: true, directory: 'C:\\x', path: 'C:\\x\\pwsh.exe' }, { env, root }).strategy, 'refuse');
   assert.equal(planUpgrade(undefined, { env, root }).strategy, 'msi-install');
 });
 
-test('resolveUpgradePlan prefers a Store alias on PATH over an MSI install', async (t) => {
+test('resolveUpgradePlan skips an unsupported Store alias in favour of the MSI install', async (t) => {
   const env = makeEnv(makeTemp(t));
   const root = W.join(env.LOCALAPPDATA, 'dsh', 'pwsh7');
   const storeDir = W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps');
@@ -283,8 +286,10 @@ test('resolveUpgradePlan prefers a Store alias on PATH over an MSI install', asy
     ], env),
     pathEntries: [{ value: storeDir, source: 'user' }],
   });
-  assert.equal(info.main.kind, 'store');
-  assert.equal(info.plan.strategy, 'store');
+  // The Store alias is listed (so the picker can explain it) but never chosen as the main install.
+  assert.ok(info.installations.some((entry) => entry.kind === 'store' && entry.supported === false));
+  assert.equal(info.main.kind, 'msi');
+  assert.equal(info.plan.strategy, 'msi');
 });
 
 test('resolveUpgradePlan refuses an explicit override', async (t) => {
