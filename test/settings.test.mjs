@@ -1515,3 +1515,25 @@ test('the setup/maintenance route table has fourteen exact routes', (t) => {
   assert.deepEqual(rows.map((row) => row.path), Object.values(SETUP_ROUTES));
   assert.ok(rows.every((row) => row.kind === 'exact'));
 });
+
+test('the installation picker refuses an MSIX package directory', async (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const exe = W.join(env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe');
+  writeFile(exe);
+
+  const service = createSetupService({
+    env,
+    detect: () => fakeState({}),
+    listInstallations: async () => ({ installations: [] }),
+    probe: async () => ({ ok: false }),
+    probeElevation: async () => false,
+    refresh: async () => {},
+  });
+  t.after(() => service.dispose());
+
+  const outcome = await service.selectInstallation(exe);
+  assert.equal(outcome.ok, false);
+  assert.match(outcome.error, /Microsoft Store|MSIX/i);
+  assert.equal(readRouterConfig(env), undefined);
+});

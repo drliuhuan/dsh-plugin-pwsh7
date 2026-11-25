@@ -17,6 +17,7 @@ import {
   fileOrSymlinkExists,
   findPwsh,
   isPathInside,
+  isStoreAliasPath,
   isPowerShell7,
   probePwsh,
   readRouterConfig,
@@ -338,4 +339,14 @@ test('real findPwsh detects the installed PowerShell 7', { skip: !fs.existsSync(
   const found = findPwsh({});
   assert.ok(found, 'expected findPwsh to find the installed PowerShell 7');
   assert.ok(fs.existsSync(found.path));
+});
+
+test('isStoreAliasPath also recognises MSIX package directories under Program Files', (t) => {
+  const base = makeTemp(t);
+  const env = makeEnv(base);
+  const packageExe = W.join(base, 'Program Files', 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe');
+  writeFile(packageExe);
+  assert.equal(isStoreAliasPath(packageExe, env), true);
+  assert.equal(isStoreAliasPath(W.join(base, 'Program Files', 'PowerShell', '7', 'pwsh.exe'), env), false);
+  assert.ok(!candidatePwshPaths(env).some((candidate) => isStoreAliasPath(candidate, env)));
 });

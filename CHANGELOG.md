@@ -4,6 +4,39 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-11-25
+### Fixed
+
+- **A Microsoft Store (MSIX) package directory is now recognized as unsupported.** The
+  `isStoreAliasPath` check previously covered only the
+  `%LOCALAPPDATA%\Microsoft\WindowsApps` app-execution alias, so an MSIX package's own
+  `%ProgramFiles%\WindowsApps\<package>\pwsh.exe` (the `InstallLocation` 0.6.3 recorded, and a
+  path a user or `DSH_PWSH_PATH`/`config.pwshPath` could name) was classified as an ordinary
+  portable installation: it was auto-selected, listed as selectable in the Settings picker, and
+  accepted by `POST /pwsh7/installation`. Such a path is now classified as `store`,
+  `supported: false`, refused by the picker and by selection, and skipped by `findPwsh`,
+  `systemPwshCandidates` and the upgrade planner. This is the reported "MSIX is installed but
+  `pwsh` cannot run" failure mode.
+- The state note for an MSIX-only machine and the Settings picker explain the limitation instead
+  of offering the package.
+
+### Changed
+
+- **The MSIX/MSIXBUNDLE installation path is gone.** The system installer resolves the official
+  **MSI only**; a release that publishes no MSI (PowerShell 7.7.0 ships an MSIX bundle and ZIPs)
+  fails with an explanation and the current-user portable ZIP as the supported alternative.
+  `installPowerShell7SystemAppx`, the app-package asset selection/parsing helpers, and the
+  `Add-AppxPackage` helper in `lib/elevate.mjs` were removed together with their tests. A
+  recorded `method: msix` installation is refused rather than updated in place.
+- The latest-release check reports only `msi`/`zip` installer kinds, so the setup dialog and
+  Settings never offer an app-package download or action.
+- The client no longer carries MSIX install/relocate copy or app-package branches; the legacy
+  `method: msix` label is kept only to describe an installation that already exists.
+- The README (English and Chinese) no longer claims that app packages are installed; it documents
+  the MSI/ZIP-only contract and the no-MSI failure.
+- Upgrades of existing Chocolatey/Scoop installations still go through `choco`/`scoop`, as
+  before; only the install mechanisms are restricted to the MSI and the portable ZIP.
+
 ## [0.7.0] - 2026-11-25
 ### Added
 

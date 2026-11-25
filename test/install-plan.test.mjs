@@ -301,3 +301,25 @@ test('resolveUpgradePlan refuses an explicit override', async (t) => {
   assert.equal(info.main.explicit, true);
   assert.equal(info.plan.strategy, 'refuse');
 });
+
+test('an MSIX package directory is unsupported and never becomes the main installation', async (t) => {
+  const env = makeEnv(makeTemp(t));
+  const root = W.join(env.LOCALAPPDATA, 'dsh', 'pwsh7');
+  const exe = W.join(env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe');
+  writeFile(exe);
+
+  const classified = classifyPwshPath(exe, { env, root, msiProducts: [] });
+  assert.equal(classified.kind, 'store');
+  assert.equal(classified.supported, false);
+  assert.match(classified.unsupportedReason, /MSIX|Microsoft Store/i);
+
+  assert.equal(planUpgrade(classified, { env, root }).strategy, 'refuse');
+
+  const listed = await listPwshInstallations({
+    env,
+    root,
+    plan: { installations: [classified], main: classified },
+    probe: async () => ({ ok: false }),
+  });
+  assert.equal(listed.installations[0].supported, false);
+});

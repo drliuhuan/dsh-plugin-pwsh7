@@ -4,15 +4,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  appxInstallScript,
   elevatedCommandScript,
   elevatedPublishScript,
   elevatedSystemInstallScript,
   elevatedSystemInstallWrapperScript,
   elevatedWrapperScript,
   elevatedZipReplaceScript,
-  normalizeAppxMarker,
-  runAppxInstall,
   runElevatedPublish,
 } from '../lib/elevate.mjs';
 
@@ -149,84 +146,6 @@ test('the package-manager script runs an executable and records its output and e
   assert.ok(script.includes('$LASTEXITCODE'));
   assert.ok(script.includes('$output'));
   assert.ok(script.includes('ConvertTo-Json -Compress'));
-});
-
-test('the app-package script installs with Add-AppxPackage and reports the executable', () => {
-  const script = appxInstallScript({
-    packagePath: 'C:\\Temp\\PowerShell-7.7.0.msixbundle',
-    markerPath: 'C:\\Temp\\result.json',
-  });
-  assert.ok(script.includes('Add-AppxPackage -Path $packagePath'));
-  assert.ok(script.includes('-ForceApplicationShutdown'));
-  assert.ok(script.includes('0x80073D02'));
-  assert.ok(script.includes("Get-AppxPackage -Name 'Microsoft.PowerShell'"));
-  assert.ok(script.includes("$packagePath = 'C:\\Temp\\PowerShell-7.7.0.msixbundle'"));
-  assert.ok(script.includes("$marker = 'C:\\Temp\\result.json'"));
-  assert.ok(script.includes("'pwsh.exe'"));
-  assert.ok(script.includes('0x80073CFF'));
-  // App packages install for the current user; this helper must never raise UAC.
-  assert.ok(!script.includes('-Verb RunAs'));
-});
-
-test('the app-package script looks up the identity it was given and stays ASCII for PS 5.1', () => {
-  const script = appxInstallScript({
-    packagePath: 'C:\\Temp\\PowerShell-LTS-7.6.11.msixbundle',
-    markerPath: 'C:\\Temp\\result.json',
-    packageName: 'Microsoft.PowerShell-LTS',
-  });
-  assert.ok(script.includes("Get-AppxPackage -Name 'Microsoft.PowerShell-LTS'"));
-  assert.ok(script.includes('Start-Sleep -Milliseconds 500'), 'registration is polled, not raced');
-  // BOM-less Windows PowerShell 5.1 scripts are decoded with the ANSI code page: no CJK literals.
-  assert.equal(/[\u4e00-\u9fff]/.test(script), false);
-  assert.equal(/\$first -match '[^']*0x80073CFB/.test(script), false, 'already-installed is not an in-use retry');
-});
-
-test('the app-package screen escapes quotes and reports the registered package', async () => {
-  const result = await runAppxInstall({
-    env: { ...process.env, SystemRoot: 'C:\\Windows' },
-    packagePath: "C:\\O'Brien\\PowerShell-7.7.0.msixbundle",
-    run: async (_file, args) => {
-      const scriptPath = args[args.length - 1];
-      const script = fs.readFileSync(scriptPath, 'utf8');
-      assert.ok(script.includes("C:\\O''Brien"), 'single quotes are doubled for PowerShell');
-      const marker = /\$marker = '((?:[^']|'')*)'/.exec(script)[1].replace(/''/g, "'");
-      fs.writeFileSync(marker, JSON.stringify({
-        ok: true,
-        path: 'C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe\\pwsh.exe',
-        version: '7.7.0.0',
-        packageFullName: 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe',
-        warnings: [],
-      }), 'utf8');
-      return { ok: true };
-    },
-  });
-  assert.equal(result.ok, true);
-  assert.match(result.path, /WindowsApps/);
-  assert.equal(result.version, '7.7.0.0');
-  assert.equal(result.packageFullName, 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe');
-  assert.deepEqual(result.warnings, []);
-});
-
-test('an app-package helper that exits without a marker is a readable failure', async () => {
-  const result = await runAppxInstall({
-    env: { ...process.env, SystemRoot: 'C:\\Windows' },
-    packagePath: 'C:\\Temp\\PowerShell-7.7.0.msixbundle',
-    run: async () => ({ ok: true }),
-  });
-  assert.equal(result.ok, false);
-  assert.match(result.error, /without a result/);
-});
-
-test('normalizeAppxMarker keeps empty optional fields undefined', () => {
-  assert.deepEqual(normalizeAppxMarker({ ok: false, error: ' 0x80073CFF ', warnings: ['x', 7, ' '] }), {
-    ok: false,
-    cancelled: false,
-    path: undefined,
-    version: undefined,
-    packageFullName: undefined,
-    warnings: ['x'],
-    error: '0x80073CFF',
-  });
 });
 
 test('a helper that exits without a marker is reported as an error', async () => {

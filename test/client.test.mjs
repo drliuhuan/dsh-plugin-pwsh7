@@ -32,14 +32,11 @@ const SETTINGS_KEYS = [
   'methodWinget', 'methodAuto', 'methodExisting', 'methodMsi', 'methodLegacyPortable',
   'methodStore', 'methodChocolatey', 'methodScoop', 'methodMsix',
   'manualMsi', 'manualZip', 'manualUpgradeMsi', 'manualUpgradeZip',
-  'manualMsix', 'manualMsixBundle', 'manualUpgradeMsix', 'manualUpgradeMsixBundle',
   'installedNone', 'routePlugin', 'routeSystem',
   'routePwsh5', 'routePluginHint', 'routeSystemHint', 'routePwsh5Hint', 'routeSystemPath',
   'routeSystemMissing', 'routeSaving', 'routeSaved', 'legacySystemHint',
   'actionInstall', 'actionInstallHint', 'actionRelocate', 'actionRelocateHint', 'relocateConfirm',
   'relocateConfirmButton', 'relocateStarted', 'relocateDone', 'relocateDoneNoPath',
-  'relocateConfirmButtonMsix', 'relocateStartedMsix', 'relocateDoneMsix', 'relocateDoneMsixNoPath',
-  'actionRelocateHintMsix', 'relocateConfirmMsix', 'updateToSystemMsix', 'installSystemMsix',
   'pickerLabel', 'pickerAutomatic', 'pickerActive', 'pickerUnverified', 'pickerHint',
   'pickerSystemHint', 'pickerPwsh5Hint', 'pickerLoading', 'pickerEmpty', 'pickerMissing',
   'pickerSaving', 'pickerSaved', 'pickerAutomaticSaved',
@@ -593,52 +590,6 @@ test('the first-run install defaults to the system MSI and offers manual MSI/ZIP
   assert.ok(links.some((link) => link.props.href.endsWith('.msi')), 'manual MSI link');
   assert.ok(links.some((link) => link.props.href.endsWith('.zip')), 'manual ZIP link');
   assert.ok(textOf(tree).includes('Manual MSI download'));
-});
-
-test('a release without an MSI labels the system action as the app package', () => {
-  const userCopy = renderDialog({
-    found: true,
-    phase: 'idle',
-    missingSeq: 0,
-    path: PWSH_PATH,
-    version: '7.6.7',
-    source: 'config',
-    install: { scope: 'user', method: 'portable' },
-    onboarding: { completed: false },
-    latest: {
-      version: '7.7.0',
-      current: '7.6.7',
-      updateAvailable: true,
-      checkedAt: 1,
-      error: null,
-      msiUrl: null,
-      zipUrl: 'https://example.test/PowerShell-7.7.0-win-x64.zip',
-      installerKind: 'msixbundle',
-      installerUrl: 'https://example.test/PowerShell-7.7.0.msixbundle',
-    },
-  });
-  const userText = textOf(userCopy);
-  assert.ok(userText.includes('Update to the app package'), 'no "system-wide" promise on a no-MSI release');
-  assert.ok(!userText.includes('Install system-wide'));
-  assert.ok(userText.includes('Manual MSIX bundle upgrade'), 'the manual link follows the real installer');
-
-  const missing = renderDialog({
-    found: false,
-    phase: 'idle',
-    installRoot: 'C:\\root',
-    releasesUrl: 'https://example.test/releases/latest',
-    latest: {
-      version: '7.7.0',
-      msiUrl: null,
-      zipUrl: 'https://example.test/PowerShell-7.7.0-win-x64.zip',
-      installerKind: 'msixbundle',
-      installerUrl: 'https://example.test/PowerShell-7.7.0.msixbundle',
-    },
-  });
-  const missingText = textOf(missing);
-  // The first-run dialog has no per-user copy yet, so there is no "move to system" button at all.
-  assert.ok(!missingText.includes('Install system-wide'));
-  assert.ok(missingText.includes('Manual MSIX bundle download'));
 });
 
 test('a user-folder install offers the system option and the update paths', () => {
@@ -1221,27 +1172,6 @@ test('the settings page shows the last install result message and warnings', () 
   assert.ok(text.includes('machine-wide installation was left untouched'));
 });
 
-test('a release without an MSI offers the MSIX bundle upgrade link', () => {
-  const state = makeState({
-    latest: {
-      version: '7.7.0',
-      current: '7.6.7',
-      updateAvailable: true,
-      checkedAt: 1,
-      error: null,
-      msiUrl: null,
-      zipUrl: 'https://example.test/PowerShell-7.7.0-win-x64.zip',
-      installerKind: 'msixbundle',
-      installerUrl: 'https://example.test/PowerShell-7.7.0.msixbundle',
-    },
-  });
-  const tree = renderSettings(new Map([[0, state]]));
-  const text = textOf(tree);
-  assert.ok(text.includes('Manual MSIX bundle upgrade'), 'the manual link names the real installer');
-  const links = findNode(tree, (node) => node.type === 'a' && typeof node.props.href === 'string');
-  assert.ok(links.some((link) => link.props.href.endsWith('PowerShell-7.7.0.msixbundle')));
-});
-
 test('an MSIX app-package installation shows the MSIX method', () => {
   const state = makeState({ scope: 'user' }, {
     exists: true,
@@ -1413,76 +1343,6 @@ test('a finished relocation from the state stream becomes exactly one localized 
     const failure = booted.captured.setters[6];
     assert.ok(failure !== undefined && failure.text.includes('System-wide installation failed'));
     assert.ok(failure.text.includes('the per-user copy is locked by a running process'));
-  } finally {
-    booted.captured.dispose();
-  }
-});
-
-test('the relocate copy explains the per-user app package when no MSI is published', () => {
-  const state = makeState({
-    latest: {
-      version: '7.7.0',
-      current: '7.6.7',
-      updateAvailable: true,
-      checkedAt: 1,
-      error: null,
-      msiUrl: null,
-      zipUrl: 'https://example.test/PowerShell-7.7.0-win-x64.zip',
-      installerKind: 'msixbundle',
-      installerUrl: 'https://example.test/PowerShell-7.7.0.msixbundle',
-    },
-  });
-  const hint = textOf(renderSettings(new Map([[0, state]])));
-  assert.ok(hint.includes('This release publishes no MSI'), 'the migration hint explains the app package');
-  const confirm = textOf(renderSettings(new Map([[0, state], [3, 'relocate']])));
-  assert.ok(confirm.includes('This release publishes no MSI'), 'the confirmation explains the app package');
-  assert.ok(!confirm.includes('for all users'), 'the copy must not promise a system-wide install');
-});
-
-test('a relocation through an MSIX app package does not claim a system-wide install', () => {
-  const appxExe = 'C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe\\pwsh.exe';
-  const instances = [];
-  class FakeEventSource {
-    constructor(url) {
-      this.url = url;
-      this.listeners = {};
-      this.closed = false;
-      instances.push(this);
-    }
-    addEventListener(name, handler) {
-      (this.listeners[name] ??= []).push(handler);
-    }
-    close() {
-      this.closed = true;
-    }
-    emit(name, data) {
-      for (const handler of this.listeners[name] ?? []) handler({ data });
-    }
-  }
-  const booted = boot(new Map(), {
-    EventSource: FakeEventSource,
-    fetch: () => Promise.resolve({ ok: true, json: () => Promise.resolve(makeState()) }),
-  });
-  renderSlot(booted, 'settings.section');
-  booted.captured.runEffects();
-  try {
-    assert.equal(instances.length, 1);
-    instances[0].emit('state', JSON.stringify(makeState({
-      relocate: {
-        ok: true,
-        relocated: true,
-        method: 'msix',
-        scope: 'user',
-        systemPath: appxExe,
-        removedUserCopy: [],
-        warnings: [],
-      },
-    })));
-    const notice = booted.captured.setters[6];
-    assert.ok(notice !== undefined && typeof notice.text === 'string');
-    assert.ok(notice.text.includes('MSIX app package'), 'the app package is named');
-    assert.ok(notice.text.includes(appxExe), 'the actual executable is named');
-    assert.ok(!notice.text.includes('system-wide'), 'a per-user app package is not system-wide');
   } finally {
     booted.captured.dispose();
   }
