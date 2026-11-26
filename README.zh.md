@@ -170,12 +170,14 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
 - **自检**：检查可执行文件解析、PowerShell 主版本、路由、配置有效性、安装/范围一致性、持久 PATH
   条目、`@deepseek-ai/*` 加载、沙箱策略、是否有安装任务在运行，并以 `ok` / `warn` / `fail` 显示详情。
 - **安装/修复**：启动与安装弹窗相同的共享安装任务（用户级），显示实时进度。
-- **迁移到系统 / 系统级升级**：运行官方 PowerShell 7 MSI，原地升级
-  `%ProgramFiles%\PowerShell\7\pwsh.exe`——这正是 Windows Terminal 和其他启动器解析的主安装。
-  未提权时只弹一次 UAC，任务显示 `waiting for administrator approval (UAC)`。MSI 安装并验证新版本
-  后，同一个提权会话会删除旧版插件留下的 `…\PowerShell\7\<version>` 并排副本及其系统 PATH 条目，
-  然后删除用户级副本、更新路由。发布不带 MSI 时（v7.7.0）无法系统级安装：操作会给出明确说明，
-  受支持的替代方案是当前用户便携 ZIP。
+- **迁移到系统 / 系统级升级**：运行按最新 release manifest 解析出的官方安装器。发布 MSI 时，MSI
+  原地升级 `%ProgramFiles%\PowerShell\7\pwsh.exe`——这正是 Windows Terminal 和其他启动器解析的
+  主安装。未提权时只弹一次 UAC，任务显示 `waiting for administrator approval (UAC)`。MSI 安装并
+  验证新版本后，同一个提权会话会删除旧版插件留下的 `…\PowerShell\7\<version>` 并排副本及其
+  系统 PATH 条目，然后删除用户级副本、更新路由。发布不带 MSI 时（v7.7.0），该操作改为安装官方
+  MSIX 应用包：Windows 应用包按用户安装，因此会以当前用户安装完成、不弹 UAC；设置页显示范围为
+  “当前用户”、方式为“官方 MSIX 应用包（按用户）”，已有的机器级 MSI 会原样保留，并提示
+  Windows Terminal 仍会启动它。
 - **卸载**：仅对插件自装的用户级便携安装可用；删除已安装版本与临时目录、移除托管的 `PATH` 条目，
   不会触碰系统或其他包管理器管理的安装。
 
@@ -186,16 +188,18 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
 - **何时弹出**：首次加载时会弹出一次（即使已经检测到 PowerShell 7，也用于确认本次部署的设置）；
   之后每次 `pwsh` 工具因缺少 PowerShell 7 失败时（`missingSeq`）再次弹出。已安装时标题与说明会显示
   “PowerShell 7 设置 / 已检测到 PowerShell 7”，不会再误报“没有找到 pwsh.exe”。
-- **做什么**：点“下载并安装”会启动共享的、由用户发起的安装任务。默认走**系统级官方 MSI**（弹一次
-  UAC）；需要便携副本时可选择“当前用户”（便携 ZIP）。弹窗依次显示 `下载 → 解压 → 验证`，以及已
-  下载字节、总大小和百分比；“取消下载”可以中止。手动下载/升级链接为 **MSI**，旁边保留便携
-  **ZIP** 链接；最新版本检查返回前回退到官方 releases 页面。不发布 MSI 的版本（如 7.7.0）无法
-  系统级安装：弹窗会说明原因并指向当前用户 ZIP；不会安装 Microsoft Store（MSIX）应用包。
+- **做什么**：点“下载并安装”会启动共享的、由用户发起的安装任务。默认走**系统级官方安装器**
+  （官方 MSI；发布不带 MSI 时是签名 MSIX 应用包）；需要便携副本时可选择“当前用户”。弹窗依次显示
+  `下载 → 解压 → 验证`，以及已下载字节、总大小和百分比；“取消下载”可以中止。手动安装链接跟随
+  解析到的资源，按 **MSI**、**MSIX** 或 **MSIX 应用包**标注下载/升级，旁边保留便携 **ZIP** 链接；
+  最新版本检查返回前回退到官方 releases 页面。发布不带 MSI 时，任务会安装当前用户的 MSIX 应用包
+  （无需 UAC；安装包大于约 100 MB），结果消息会说明该版本没有发布 MSI。
 - **更新检查**：弹窗向 `/pwsh7/latest` 查询最新版本，并与已安装的可执行文件（包括插件记录的安装）
-  比较。返回的 `installerKind`（`msi` 或 `zip`）与 `installerUrl` 决定升级动作；不发布 MSI 的
-  版本会返回检查错误，而不是提供应用包。对用户级副本提供“升级用户目录”和“安装到系统级”；对
-  系统级副本提供“升级系统级”。检查失败不影响已安装状态，只显示错误行；设置页稍后提供同样的升级
-  动作。
+  比较。返回的 `installerKind`（`msi`、`msix`、`msixbundle` 或 `zip`）与 `installerUrl` 决定升级
+  动作；`msiUrl` 只在 MSI 版本上有值，因此已安装的 7.7.0 应用包不会仅因 Program Files 里还留着
+  旧 MSI 就被判为“可更新”。对用户级副本提供“升级用户目录”和“安装到系统级”（后者在无 MSI 的
+  版本上会改为安装当前用户应用包，不弹 UAC）；对系统级副本提供“升级系统级”。检查失败不影响已安装
+  状态，只显示错误行；设置页稍后提供同样的升级动作。
 - **为什么只有一个任务**：弹窗和设置页共用一个协调器，所以无论用户从哪个界面开始安装，进度都一致，
   也不会在 `%LOCALAPPDATA%\dsh\pwsh7\tmp` 的同一个压缩包上互相踩踏。模型的 `shell_router` 工具不会启动安装。
 - **传输**：`GET /pwsh7/state`（快照，含 `selection: {path, found}`）、`GET /pwsh7/events`
@@ -276,56 +280,74 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
 安装只能由用户发起：Web 安装弹窗、设置 → PowerShell 7，或在 DSH 之外自行安装 PowerShell 7。
 模型工具不会启动安装。
 
-**安装策略（0.7.0）：只保留两种机制。** 插件只安装官方 **MSI**（系统级）或便携 **ZIP**（当前用户）。
-完全不使用 winget 和 Microsoft Store（MSIX）安装：MSIX 的 `pwsh.exe` 是应用执行别名，非交互子进程
-经常根本无法启动——这正是“PowerShell 7 明明装了，`pwsh` 却调用不了”的根因。对于不发布 MSI 的版本
-（例如 PowerShell 7.7.0 只提供 ZIP 和 `MSIXBUNDLE`），本插件无法系统级安装：系统级操作会给出明确
-原因并失败，当前用户便携 ZIP 才是受支持的路径。
+首次运行弹窗默认 `scope: "system"`（官方安装器）；需要便携副本时选择 `scope: "user"`。
+安装器按最新 release manifest 解析：先按架构选择 **MSI**，再按架构选择 **MSIX**，最后是与架构
+无关的 **MSIXBUNDLE**（`PowerShell-<version>.msixbundle`；`PowerShell-LTS-<version>.msixbundle`
+只有版本与 release 匹配时才会采用，`PowerShellPreview-*` 包一律忽略）。仍然发布 MSI 的版本
+（如 v7.6.10 LTS）使用 MSI；v7.7.0 只发布 MSIX 应用包和 ZIP，因此系统级请求最终会以当前用户
+应用包的形式完成（见下文）。GitHub API 不可用时，插件会跟随 release tag 的 releases 页面重定向，
+按同一优先顺序用 HTTP `HEAD`（必要时再发一字节范围 `GET`）探测候选资源。首次运行弹窗和设置页都
+提供跟随解析结果标注的手动 **MSI**、**MSIX** 或 **MSIX 应用包**下载/升级链接，以及便携 **ZIP**
+链接；最新版本检查返回前回退到官方 PowerShell releases 页面。
 
 | 范围 | 方式 | 安装位置 | 持久 PATH |
 |---|---|---|---|
 | `user` | 便携 ZIP | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | 当前用户（`HKCU\Environment`） |
-| `system` | **官方 MSI，原地升级** | `%ProgramFiles%\PowerShell\7\pwsh.exe`（主安装，不创建 `<version>` 子目录） | 系统；由官方安装器维护，并确保主目录排在前面 |
+| `system` | **官方安装器，原地安装**——发布 MSI 时用 MSI，否则安装当前用户的 MSIX 应用包 | MSI：`%ProgramFiles%\PowerShell\7\pwsh.exe`（主安装，不再创建 `<version>` 子目录）。MSIX：已注册应用包的 `<InstallLocation>\pwsh.exe`（别名回退 `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`） | MSI：系统；由官方安装器维护，并确保主目录排在前面。MSIX：无；应用包自行注册别名 |
 
-系统级安装/升级运行官方 `PowerShell-<version>-win-<arch>.msi`，原地升级
-`…\PowerShell\7\pwsh.exe`，因此 Windows Terminal、Win+R 等启动器都能看到新版本，而不只是 DSH 的
-`pwsh` 工具。未提权的 DSH 只弹一次 UAC（`Start-Process -Verb RunAs`），任务显示
-`waiting for administrator approval (UAC)`。提权脚本先读取主 `pwsh.exe` 的文件版本；只有确认已是目标
-版本，才删除旧版插件留下的 `…\PowerShell\7\<version>` 并排副本及其系统 PATH 条目。如果 Windows 把
-文件替换安排到重启后，脚本会保留并排副本和 PATH，任务会明确提示需要重启/关闭终端。
+系统级安装/升级按 release manifest 解析并运行官方安装器。发布 MSI 时运行
+`PowerShell-<version>-win-<arch>.msi`，原地升级 `…\PowerShell\7\pwsh.exe`，因此 Windows Terminal、
+Win+R 等启动器都能看到新版本，而不只是 DSH 的 `pwsh` 工具。未提权的 DSH 只弹一次 UAC
+（`Start-Process -Verb RunAs`），任务显示 `waiting for administrator approval (UAC)`。提权脚本先读取
+主 `pwsh.exe` 的文件版本；只有确认已是目标版本，才删除旧版插件留下的
+`…\PowerShell\7\<version>` 并排副本及其系统 PATH 条目。如果 Windows 把文件替换安排到重启后，
+脚本会保留并排副本和 PATH，任务会明确提示需要重启/关闭终端。
 
-当目标版本不发布 MSI 时，系统级操作会直接停止并给出可执行的提示（说明该版本、只支持 MSI 或当前用户
-便携 ZIP，并指向设置页的“当前用户”选项），而不是改装 MSIX 应用包。该版本的当前用户 ZIP 安装不受
-影响。
+发布不带 MSI 时（v7.7.0），同一个任务改走 MSIX 路径：用同样的实时进度与取消机制下载解析到的
+MSIX 应用包（按架构的 MSIX，或与架构无关的 MSIXBUNDLE），校验 ZIP/OPC 包 magic，然后通过
+**Windows PowerShell 5.1** 运行 `Add-AppxPackage` 安装（PowerShell 7 里没有 Appx 命令）。
+Windows 应用包按用户安装，因此到达这条路径的 `system` 请求会以**当前用户安装**完成——不弹 UAC——
+设置页显示范围为“当前用户”、方式为
+“官方 MSIX 应用包（按用户）”。任务通过 `Get-AppxPackage Microsoft.PowerShell`（LTS 应用包为 `Microsoft.PowerShell-LTS`）→
+`<InstallLocation>\pwsh.exe`（回退 `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`）解析已注册的
+可执行文件、探测版本，并以 `method: msix` 记录为插件的安装；结果消息说明该 release 没有发布 MSI。
+已有的机器级 MSI 安装会原样保留，并提示 Windows Terminal 会一直启动那个旧安装，直到它被升级或
+卸载，而 DSH 使用应用包。带版本号的 `…\PowerShell\7\<version>` 旧并排副本在这条路径上无法在不提权
+的情况下删除：任务会把它从自身进程 PATH 中移除、尽量删除，删不掉的目录（及其系统 PATH 条目）会
+明确列出并提示需要以管理员权限手动清理。安装完成后的结果消息与警告会显示在安装弹窗和设置页中。如果有正在运行的 PowerShell 7 实例阻止更新，辅助脚本会用
+`Add-AppxPackage -ForceApplicationShutdown` 重试；如果 Windows 阻止旁加载（例如 `0x80073CFF`），
+错误会说明如何允许旁加载或改用当前用户的便携 ZIP。
 
 用户级安装无需提权，并保留既有 PATH 行为（保留值类型、避免重复、刷新宿主进程 PATH、广播 Windows
 环境变量变更）。系统级升级后，已打开的终端可能需要重新启动。
 
-设置页可以把已有用户级安装一步迁移到系统级（`POST /pwsh7/relocate`）：运行官方 MSI（若主安装已是
-最新则直接复用）、删除用户级副本，并把配置指向主系统可执行文件。
+设置页可以把已有用户级安装一步迁移到系统级（`POST /pwsh7/relocate`）：运行解析出的官方安装器
+（若主安装已是最新则直接复用）、删除用户级副本，并把配置指向主系统可执行文件。发布不带 MSI 时，
+迁移改为安装当前用户应用包，并以 `method: msix` 记录其可执行文件；已有的机器级 MSI 会原样保留并
+给出提示。
 
-安装、升级、卸载或迁移 PowerShell 7 会清除显式的安装选择，让刚安装或记录的那份副本重新成为活动
-副本。
+安装、升级、卸载或迁移 PowerShell 7 都会清除显式安装选择，使刚安装或记录的那份副本重新成为生效安装。
 
-没有 Web GUI 时，请自行安装 PowerShell 7（官方 MSI 或 release ZIP），并把 `DSH_PWSH_PATH`
-或 `config.json` 指向其 `pwsh.exe`。Microsoft Store（MSIX）副本不是受支持的目标：它无法被
-子进程可靠启动。
+没有 Web GUI 时，请自行安装 PowerShell 7（官方 MSI、官方 MSIX 应用包、Store 或 release zip），
+并把 `DSH_PWSH_PATH` 或 `config.json` 指向其 `pwsh.exe`。
 
 下载来源：
 
 | 范围 | 资源 | 安装位置 |
 |---|---|---|
 | `user` | `PowerShell-<version>-win-x64.zip` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>\` |
-| `system` | `PowerShell-<version>-win-<arch>.msi`（仅当该版本发布 MSI 时） | `%ProgramFiles%\PowerShell\7\pwsh.exe`（原地） |
+| `system` | 发布 MSI 时用 `PowerShell-<version>-win-<arch>.msi`，否则用按架构的 MSIX 或 `PowerShell-<version>.msixbundle` | MSI：`%ProgramFiles%\PowerShell\7\pwsh.exe`（原地）。MSIX：当前用户应用包 |
 
 - HTTPS 流式下载到 `%LOCALAPPDATA%\dsh\pwsh7\tmp`，支持进度回调与取消。ZIP 校验 ZIP magic，
-  MSI 校验 OLE/Windows Installer magic。
+  MSIX/MSIXBUNDLE 校验 ZIP/OPC 包 magic，MSI 校验 OLE/Windows Installer magic。
 - 用户级用 Windows 自带 `tar.exe`（bsdtar）解包，并先真实运行一次新 `pwsh.exe` 验证主版本 >= 7，
   再写入 `config.json`。
-- 系统级执行官方 MSI：`msiexec /i … /qn /norestart ALLUSERS=1`，不会把 ZIP 解压到 Program Files。
-  安装后读取主 `pwsh.exe` 的文件版本进行校验，再清理旧并排副本。
-- `auto` 在系统级解析为 MSI、在用户级解析为便携 ZIP。没有 winget / MSIX 回退：失败时返回明确的
-  手动 MSI/ZIP 恢复指令，并保持现有安装不变。
+- 系统级在发布 MSI 时执行官方 MSI：`msiexec /i … /qn /norestart ALLUSERS=1`，不会把 ZIP 解压到
+  Program Files。安装后读取主 `pwsh.exe` 的文件版本进行校验，再清理旧并排副本。发布不带 MSI 时，
+  改为通过 Windows PowerShell 5.1 运行 `Add-AppxPackage` 安装解析到的 MSIX/MSIXBUNDLE，校验已注册
+  应用包 `pwsh.exe` 的版本，并记录 `method: msix`。
+- `auto` 在系统级使用官方安装器（发布 MSI 时用 MSI，否则用签名 MSIX 应用包），用户级使用便携
+  ZIP；失败时返回明确的恢复命令，不会悄悄改用另一种安装器。不存在 winget/Store 安装回退。
 - 已在本机实测：下载 106,364,316 字节（约 31s），解压后 244.8 MB，验证为 `7.6.7`。
 
 ### 升级已有安装（不假设安装方式）
@@ -337,17 +359,42 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
 |---|---|---|
 | 机器级官方 MSI | HKLM 卸载注册表项 `PowerShell 7-x64` | `msiexec /i … ALLUSERS=1` 原地升级，弹一次 UAC |
 | 当前用户 MSI | HKCU 卸载注册表项 | `msiexec /i … ALLUSERS=0` 原地升级（无需提权） |
+| 官方 MSIX 应用包 | `Get-AppxPackage Microsoft.PowerShell`（LTS 包标识为 `Microsoft.PowerShell-LTS`）、`config.json` 里 `method: "msix"` 的记录，或应用执行别名/包目录 | 用 `Add-AppxPackage` 安装最新解析到的 MSIX/MSIXBUNDLE（按用户、无需提权），并记录新的可执行文件；若后续版本发布了 MSI，同一升级会安装官方 MSI 再卸载应用包（迁移，见下文） |
 | 手动/便携 ZIP 且在 PATH 中 | 目录里有 `pwsh.exe`，但没有 MSI/Store/包管理器标记 | 原地替换该目录：旧目录改名 → 复制新文件 → 校验文件版本 → 删除旧目录；失败自动回滚。PATH 条目不变 |
 | Chocolatey | `…\chocolatey\bin\pwsh.exe` shim | `choco upgrade powershell-core -y`（需要时提权） |
 | Scoop | `…\scoop\shims\pwsh.exe` shim | `scoop update pwsh`（全局安装用 `-g`，需要时提权） |
-| Microsoft Store（MSIX） | `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` 或已注册的应用包 | **拒绝**：从不使用或升级 MSIX 副本；请安装官方 MSI 或当前用户便携 ZIP |
+| Microsoft Store / MSIX 别名 | `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`（`IO_REPARSE_TAG_APPEXECLINK` 别名）或 `%ProgramFiles%\WindowsApps` 下的包目录 | 识别为官方 MSIX 应用包（`method: "msix"`）：通过签名 MSIX/MSIXBUNDLE 渠道更新；发布 MSI 时迁移到 MSI。该安装不再使用 `winget --source msstore` 升级 |
 | 插件托管的用户级副本 | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | 下载最新 ZIP 到新版本目录，并把配置指向新目录 |
-| 旧版插件留下的系统并排副本 | `%ProgramFiles%\PowerShell\7\<version>` | 升级主 MSI，然后删除带版本号的副本及其 PATH 条目 |
+| 旧版插件留下的系统并排副本 | `%ProgramFiles%\PowerShell\7\<version>` | 发布 MSI 时升级主 MSI，然后删除带版本号的副本及其 PATH 条目。不发布 MSI 时改为安装当前用户应用包，并报告遗留副本/PATH 条目（删除需要提权） |
 | `DSH_PWSH_PATH` / 行配置 `pwshPath` 覆盖 | 显式覆盖优先 | **拒绝覆盖**并说明原因；请用该副本自己的安装器升级，或移除覆盖 |
-| 未知/未安装 | 没有检测到 | 安装官方 MSI 到 Program Files；若最新版本不发布 MSI，错误信息会指明当前用户便携 ZIP 作为替代 |
+| 未知/未安装 | 没有检测到 | 安装官方安装器：发布 MSI 时安装到 Program Files 的主 MSI，否则安装当前用户 MSIX 应用包 |
 
-同一套检测也支持 `win-arm64`、`win-x86` 资源，按操作系统架构选择。包管理器缺失或升级失败时，
-不会悄悄改装一个额外的用户级副本，而是返回具体的恢复命令。
+该 release 没有发布 MSI（v7.7.0）时，基于 MSI 的机制无法升级到它：系统级操作会改为安装当前用户的
+MSIX 应用包，已有的机器级 MSI 会原样保留，并提示 Windows Terminal 会一直启动它，直到它被升级或卸载。
+
+### MSIX → MSI：以后改用官方 MSI
+
+MSIX 与 MSI 是**两套独立注册**，不是同一个安装的两个版本：运行 MSI 安装器不会升级或卸载 MSIX 应用包，
+安装更新的 MSIX 应用包也不会替换机器级 MSI。插件显式处理这个过渡：
+
+- 记录为 `method: msix` 的安装会被识别为 MSIX 应用包。后续版本一旦发布 MSI，**系统级升级**会安装
+  该 MSI（弹一次 UAC，成为 `%ProgramFiles%\PowerShell\7\pwsh.exe`），然后用 `Remove-AppxPackage`
+  （无需提权）卸载记录的应用包，并把安装记录改为 `method: "msi"`；结果消息会说明应用包是否已卸载。
+- 若应用包因文件占用等原因卸载失败，MSI 仍会保留安装，结果会警告：应用执行别名可能继续启动应用包，
+  直到手动卸载。此时选择器会同时列出两个安装，由用户选择使用哪一个。
+- 迁移**不允许回退**：如果最新 MSI 版本比已记录的 MSIX 安装更旧，操作会失败并说明原因，而不是降级。
+  最新版本没有 MSI 时，同一操作改为用更新的 MSIX/MSIXBUNDLE 升级应用包。
+- 应用执行别名位于用户 `PATH`，在 DSH 之外可能继续遮蔽机器级 `pwsh.exe`，直到应用包被卸载；迁移完成后
+  DSH 自身使用记录的 MSI 路径。
+
+应用包的两条启动路径（包目录里的 `pwsh.exe` 和 `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`
+别名）已在 Windows 11 + PowerShell 7.7.0 上实测，包括 DSH 的 Windows ACL 沙箱（`workspace-write`
+与 `read-only`）下均报告 7.7.0。此前“MSIX 副本无法从子进程启动”的说法过强，已删除；插件仍不会把
+包目录当作手动便携 ZIP 去替换文件，以免破坏注册。
+
+同一套检测也支持 `win-arm64`、`win-x86` 资源，按操作系统架构选择，安装器解析同样按该架构应用
+MSI → MSIX 的优先顺序（MSIXBUNDLE 与架构无关）。包管理器缺失或升级失败时，不会悄悄改装一个额外的
+用户级副本，而是返回具体的恢复命令。
 
 ## 沙箱
 
@@ -367,10 +414,15 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
    - **仍然是 Windows PowerShell 5.1**：检测没找到 PowerShell 7。设置 `DSH_PWSH_PATH` 或
      `config.json` 的 `pwshPath`，再查看 `status`。
    - **PowerShell 7 装在自定义位置**：设置 `DSH_PWSH_PATH` 或 `config.json`。
-   - **“系统级”安装报“does not publish a Windows MSI”**：不发布 MSI 的版本（v7.7.0）无法系统级
-     安装，这是预期行为；请改用当前用户便携 ZIP。
-   - **Windows Terminal 仍启动旧版 PowerShell 7**：较新的版本没有发布 MSI，旧的机器级 MSI 被原样
-     保留。请升级或卸载它，或继续使用当前用户便携 ZIP。
+   - **“系统级”安装最后变成“当前用户”**：发布不带 MSI（v7.7.0）时这是预期行为——Windows 应用包
+     按用户安装，任务会通过 `Add-AppxPackage` 安装 MSIX 应用包，方式显示为“官方 MSIX 应用包
+     （按用户）”，且不需要 UAC。如果不想使用应用包，请改用当前用户便携 ZIP。
+   - **装了 MSIX，以后想换官方 MSI**：后续版本发布 MSI 后执行**系统级升级**——插件会安装 MSI 并卸载
+     记录的应用包。MSIX 与 MSI 是独立注册，单独运行 MSI 安装器会让两个安装并存。
+   - **MSIX 安装报 `0x80073CFF`**：Windows 阻止了旁加载。请允许应用旁加载（设置 → 系统 →
+     开发者选项），或改用当前用户便携 ZIP。
+   - **Windows Terminal 仍启动旧版 PowerShell 7**：因为该 release 没有发布 MSI，旧的机器级 MSI
+     被原样保留。请升级或卸载该安装；DSH 使用 `config.json` 里记录的应用包。
    - **沙箱 / ACL 失败**：见上一节。
 
 ## 结构
@@ -383,9 +435,9 @@ PowerShell 命令同样拒绝。文本守卫仍不是完整安全边界：任意
 | `lib/paths.mjs` | PowerShell 7 路径探测、版本探测、`config.json` 读写 |
 | `lib/route.mjs` | 路由模式（plugin/system/pwsh5）持久化、显式 `selectedPwshPath` 选择、系统默认可执行文件与 pwsh5 解析、安装信息与旧并排副本描述 |
 | `lib/install-plan.mjs` | 从持久 PATH + 注册表识别 MSI/便携/Store/Chocolatey/Scoop/插件安装，并选择升级策略；`listPwshInstallations()` 枚举所有安装并探测版本，供设置页下拉框使用 |
-| `lib/install.mjs` | 用户级便携安装（官方 zip）；系统级仅解析并安装官方 MSI（不提供 MSI 的版本会给出明确失败提示）、MSI/便携原地替换/包管理器升级、旧并排副本清理；进度与阶段回调 |
+| `lib/install.mjs` | 用户级便携安装（官方 zip）；系统级从 release manifest 解析安装器（MSI → MSIX → MSIXBUNDLE）、MSI/便携原地替换/包管理器升级、通过 Windows PowerShell 5.1 的 `Add-AppxPackage` 安装 MSIX/MSIXBUNDLE、MSIX→MSI 迁移（`Remove-AppxPackage`）、旧并排副本清理；进度与阶段回调 |
 | `lib/install-scope.mjs` | 注册表 PATH 写入/移除（保留值类型）、提权探测、Program Files 范围、系统目录旧版本副本枚举 |
-| `lib/elevate.mjs` | 安装辅助：经 UAC 的系统 MSI 升级、验证主安装、清理旧并排副本与 PATH；以及提权 ZIP 替换与包管理器命令 |
+| `lib/elevate.mjs` | 安装辅助：经 UAC 的系统 MSI 升级、验证主安装、清理旧并排副本与 PATH；以及无 MSI 版本用的 `Add-AppxPackage` 辅助脚本，通过 Windows PowerShell 5.1 运行（无需提权） |
 | `lib/state.mjs` | 进程内解析缓存（executor 与工具共用）；按检测优先级解析（`DSH_PWSH_PATH` → `selectedPwshPath` → 安装记录 → 常见位置/PATH）；缺失运行信号 |
 | `lib/maintenance.mjs` | 删除插件自装的用户级安装（文件、临时目录、托管的 PATH 条目） |
 | `lib/selfcheck.mjs` | 只读自检：可执行文件、版本、路由、配置、安装、PATH、内置包、沙箱、任务、路由表 |

@@ -184,8 +184,7 @@ test('resolveSystemPwsh follows the contract order', (t) => {
   writeFile(candidates.pathBin);
   assert.equal(resolveSystemPwsh(env), candidates.pathBin);
   writeFile(candidates.store);
-  // A Microsoft Store (MSIX) alias is never a system default.
-  assert.equal(resolveSystemPwsh(env), candidates.pathBin);
+  assert.equal(resolveSystemPwsh(env), candidates.store);
   writeFile(candidates.localPrograms);
   assert.equal(resolveSystemPwsh(env), candidates.localPrograms);
   writeFile(candidates.programFilesX86);
@@ -1514,26 +1513,4 @@ test('the setup/maintenance route table has fourteen exact routes', (t) => {
   assert.equal(rows.length, 14);
   assert.deepEqual(rows.map((row) => row.path), Object.values(SETUP_ROUTES));
   assert.ok(rows.every((row) => row.kind === 'exact'));
-});
-
-test('the installation picker refuses an MSIX package directory', async (t) => {
-  const base = makeTemp(t);
-  const env = makeEnv(base);
-  const exe = W.join(env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe');
-  writeFile(exe);
-
-  const service = createSetupService({
-    env,
-    detect: () => fakeState({}),
-    listInstallations: async () => ({ installations: [] }),
-    probe: async () => ({ ok: false }),
-    probeElevation: async () => false,
-    refresh: async () => {},
-  });
-  t.after(() => service.dispose());
-
-  const outcome = await service.selectInstallation(exe);
-  assert.equal(outcome.ok, false);
-  assert.match(outcome.error, /Microsoft Store|MSIX/i);
-  assert.equal(readRouterConfig(env), undefined);
 });

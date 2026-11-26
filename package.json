@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-pwsh7",
-  "version": "0.7.1",
-  "description": "Windows DeepSeek Harness bundle that routes the pwsh tool to PowerShell 7 (or forces Windows PowerShell 5.1), lets the user pick among several installed pwsh.exe files, always redirects Remove-Item deletions to the Recycle Bin, and installs only through the official MSI (system scope) or the portable ZIP (current user) — never winget or a Microsoft Store (MSIX) copy. Includes a Settings page, a Web setup dialog with live download progress, and a sandbox-aware executor.",
+  "version": "0.7.2",
+  "description": "Windows DeepSeek Harness bundle that routes the pwsh tool to PowerShell 7 (or forces Windows PowerShell 5.1), lets the user pick among several installed pwsh.exe files, always redirects Remove-Item deletions to the Recycle Bin, and installs through the official MSI (system scope), the signed MSIX app package (per user, when a release publishes no MSI), or the portable ZIP (current user) — never winget — with an MSIX-to-MSI migration when a later release publishes an MSI. Includes a Settings page, a Web setup dialog with live download progress, and a sandbox-aware executor.",
   "type": "module",
   "license": "MIT",
   "author": "drliuhuan",

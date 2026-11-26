@@ -58,11 +58,11 @@
     titleReady: 'PowerShell 7 setup',
     lead: 'PowerShell 7 was not found on this machine.',
     leadReady: 'PowerShell 7 is installed. Confirm the setup choices below.',
-    body: 'Install location: {path}. The system install runs the official MSI (this plugin never installs a Microsoft Store/MSIX copy); choose the current-user option for a portable ZIP.',
+    body: 'Install location: {path}. The default system install runs the official installer (the Windows MSI, or the signed MSIX app package when a release publishes no MSI); choose the current-user option for a portable copy.',
     scopeLabel: 'Installation scope',
     userScope: 'Current user (portable ZIP, no administrator rights)',
-    systemScope: 'System (official MSI; one UAC prompt when it runs)',
-    hint: 'About 100 MB for the portable ZIP. The system install upgrades %ProgramFiles%\\PowerShell\\7 with the official MSI; a release that publishes no MSI (for example 7.7.0) cannot be installed system-wide, so install the current-user portable ZIP instead. No Microsoft Store (MSIX) package is used.',
+    systemScope: 'System (official installer; UAC only when the MSI runs)',
+    hint: 'About 100 MB for the portable ZIP (the MSIX app bundle is larger). The system install upgrades %ProgramFiles%\\PowerShell\\7 with the official MSI; when a release publishes no MSI (for example 7.7.0), the signed MSIX app package is installed for your Windows account instead. The current-user option extracts the portable ZIP without elevation. If you installed the app package and a later release publishes an MSI, Update system-wide installs the MSI and removes the app package.',
     download: 'Download and install',
     later: 'Not now',
     cancel: 'Cancel download',
@@ -86,6 +86,10 @@
     progressUnknown: 'Downloaded {received}',
     manual: 'Manual download',
     manualMsi: 'Manual MSI download',
+    manualMsix: 'Manual MSIX download',
+    manualMsixBundle: 'Manual MSIX bundle download',
+    manualUpgradeMsix: 'Manual MSIX upgrade',
+    manualUpgradeMsixBundle: 'Manual MSIX bundle upgrade',
     manualZip: 'Portable ZIP',
     manualUpgradeZip: 'Manual ZIP upgrade',
     manualUpgradeMsi: 'Manual MSI upgrade',
@@ -112,6 +116,8 @@
     updateInPlace: 'Update in place',
     updateToSystem: 'Update and move to system',
     installSystem: 'Install system-wide',
+    updateToSystemMsix: 'Update to the app package',
+    installSystemMsix: 'Install the app package',
     systemRemovalHint: 'Removes the user copy and its PATH entry.',
     latestError: 'Update check failed: {error}',
     checkingLatest: 'Checking for the latest version…',
@@ -199,15 +205,13 @@
     pickerPwsh5Hint: 'The pwsh5 route is forced and ignores the selection. Switch to the plugin route to choose a PowerShell 7 installation.',
     pickerLoading: 'Looking for PowerShell 7 installations…',
     pickerEmpty: 'No PowerShell 7 installations were detected.',
-    pickerUnsupported: 'unsupported',
-    pickerUnsupportedHint: 'Microsoft Store (MSIX) copies are listed but cannot be chosen: they cannot be launched reliably from a child process. Use the official MSI or the portable user-level ZIP.',
     pickerMissing: 'The selected installation no longer exists ({path}); automatic detection is used instead.',
     pickerSaving: 'Saving the installation selection…',
     pickerSaved: 'PowerShell 7 installation selection saved.',
     pickerAutomaticSaved: 'Selection cleared; the plugin route order is used again.',
     routeSystemPath: 'The system default currently resolves to {path}.',
     routeSystemMissing: 'No system-wide PowerShell 7 was found; the pwsh tool will fall back to Windows PowerShell 5.1.',
-    legacySystemHint: 'The active executable is a versioned copy that an older plugin release extracted into the system folder; Windows Terminal launches the main installation instead. An MSI release update replaces that main installation with the official MSI and removes the extra copy; a release that publishes no MSI cannot be installed system-wide.',
+    legacySystemHint: 'The active executable is a versioned copy that an older plugin release extracted into the system folder; Windows Terminal launches the main installation instead. An MSI-release update replaces that main installation with the official MSI and removes the extra copy; a release that publishes no MSI installs the per-user MSIX app package and leaves this copy (and its machine PATH entry) for an elevated manual removal.',
     routeSaving: 'Switching the route…',
     routeSaved: 'Routing switched to {mode}.',
     actionInstall: 'Install for current user',
@@ -216,9 +220,15 @@
     actionRelocateHint: 'Installs PowerShell 7 for all users and removes the per-user copy. Windows asks for administrator approval.',
     relocateConfirm: 'Install PowerShell 7 for all users, then remove the per-user copy? This lets every Windows account use it.',
     relocateConfirmButton: 'Move to system',
+    relocateConfirmButtonMsix: 'Install app package',
     relocateStarted: 'Installing PowerShell 7 system-wide…',
+    relocateStartedMsix: 'Installing the official PowerShell 7 app package…',
     relocateDone: 'PowerShell 7 is now installed system-wide at {path}.',
     relocateDoneNoPath: 'PowerShell 7 is now installed system-wide.',
+    relocateDoneMsix: 'PowerShell 7 is installed from the official MSIX app package at {path}. App packages are per-user, so other Windows accounts and the old system installation are unchanged.',
+    relocateDoneMsixNoPath: 'PowerShell 7 is installed from the official MSIX app package. App packages are per-user, so other Windows accounts and the old system installation are unchanged.',
+    actionRelocateHintMsix: 'This release publishes no MSI: installs the official PowerShell 7 app package for the current Windows account and removes the per-user copy. No administrator approval; other accounts are not changed.',
+    relocateConfirmMsix: 'This release publishes no MSI. Install the official PowerShell 7 app package for the current Windows account, then remove the per-user copy? Other Windows accounts and the old system installation are unchanged.',
     relocateRemoved: 'Removed {count} per-user copies.',
     relocateFailed: 'System-wide installation failed: {error}',
     actionUninstall: 'Uninstall per-user copy',
@@ -257,11 +267,11 @@
     titleReady: 'PowerShell 7 设置',
     lead: '这个部署会把 pwsh 工具交给 PowerShell 7 执行，但这台电脑上没有找到 pwsh.exe。',
     leadReady: '已检测到 PowerShell 7。请在下方确认本次部署的设置。',
-    body: '安装位置：{path}。系统级安装运行官方 MSI（本插件从不安装 Microsoft Store/MSIX 副本）；需要便携副本时可选当前用户。',
+    body: '安装位置：{path}。默认走官方安装器系统级安装（Windows MSI；若该版本不提供 MSI，则用签名 MSIX 应用包）；需要便携副本时可选当前用户。',
     scopeLabel: '安装范围',
     userScope: '当前用户（便携 ZIP，无需管理员权限）',
-    systemScope: '系统（官方 MSI；运行时弹一次 UAC）',
-    hint: '便携 ZIP 约 100 MB。系统级安装用官方 MSI 原地升级 %ProgramFiles%\\PowerShell\\7；若该版本不提供 MSI（例如 7.7.0），则无法系统级安装，请改用当前用户便携 ZIP。不会使用 Microsoft Store（MSIX）应用包。',
+    systemScope: '系统（官方安装器；仅运行 MSI 时弹 UAC）',
+    hint: '便携 ZIP 约 100 MB（MSIX 应用包更大）。系统级安装用官方 MSI 原地升级 %ProgramFiles%\\PowerShell\\7；若该版本不提供 MSI（例如 7.7.0），则改为给当前 Windows 账户安装签名 MSIX 应用包。当前用户选项解压便携 ZIP，无需提权。 若已安装应用包、之后发布的版本提供了 MSI，系统级升级会安装 MSI 并卸载应用包。',
     download: '下载并安装',
     later: '稍后',
     cancel: '取消下载',
@@ -285,6 +295,10 @@
     progressUnknown: '已下载 {received}',
     manual: '手动下载',
     manualMsi: '手动下载 MSI',
+    manualMsix: '手动下载 MSIX',
+    manualMsixBundle: '手动下载 MSIX 应用包',
+    manualUpgradeMsix: '手动升级 MSIX',
+    manualUpgradeMsixBundle: '手动升级 MSIX 应用包',
     manualZip: '便携 ZIP',
     manualUpgradeZip: '手动升级 ZIP',
     manualUpgradeMsi: '手动升级 MSI',
@@ -311,6 +325,8 @@
     updateInPlace: '仅升级',
     updateToSystem: '升级并迁移到系统级',
     installSystem: '安装到系统级',
+    updateToSystemMsix: '升级并改为应用包',
+    installSystemMsix: '安装应用包',
     systemRemovalHint: '会删除用户目录副本及其 PATH 条目。',
     latestError: '检查更新失败：{error}',
     checkingLatest: '正在检查最新版本…',
@@ -398,15 +414,13 @@
     pickerPwsh5Hint: '当前强制使用 pwsh5，选择被忽略。请先切换到插件路由再选择 PowerShell 7 安装。',
     pickerLoading: '正在查找 PowerShell 7 安装…',
     pickerEmpty: '没有检测到其他 PowerShell 7 安装。',
-    pickerUnsupported: '不支持',
-    pickerUnsupportedHint: 'Microsoft Store（MSIX）副本会列出但不可选：它无法被子进程可靠启动。请改用官方 MSI 或用户级便携 ZIP。',
     pickerMissing: '所选安装已不存在（{path}），将改用自动检测。',
     pickerSaving: '正在保存安装选择…',
     pickerSaved: '已保存 PowerShell 7 安装选择。',
     pickerAutomaticSaved: '已清除选择，重新使用插件路由顺序。',
     routeSystemPath: '系统默认目前解析到 {path}。',
     routeSystemMissing: '没有找到系统范围的 PowerShell 7，pwsh 工具将回退到 Windows PowerShell 5.1。',
-    legacySystemHint: '当前可执行文件是旧版插件解压到系统目录的带版本号副本；Windows Terminal 启动的其实是主安装。带 MSI 的版本升级会用官方 MSI 替换主安装并删除这个多余副本；不提供 MSI 的版本无法系统级安装。',
+    legacySystemHint: '当前可执行文件是旧版插件解压到系统目录的带版本号副本；Windows Terminal 启动的其实是主安装。带 MSI 的版本升级会用官方 MSI 替换主安装并删除这个多余副本；不提供 MSI 的版本改为安装当前用户的 MSIX 应用包，并保留该副本及其系统 PATH 条目，需要以管理员权限手动删除。',
     routeSaving: '正在切换路由…',
     routeSaved: '已切换到{mode}。',
     actionInstall: '为当前用户安装',
@@ -415,9 +429,15 @@
     actionRelocateHint: '为所有用户安装 PowerShell 7 并删除当前用户副本。Windows 会请求管理员授权。',
     relocateConfirm: '为所有用户安装 PowerShell 7，然后删除当前用户副本？这样每个 Windows 账户都能使用。',
     relocateConfirmButton: '迁移到系统',
+    relocateConfirmButtonMsix: '安装应用包',
     relocateStarted: '正在安装系统级 PowerShell 7…',
+    relocateStartedMsix: '正在安装官方 PowerShell 7 应用包…',
     relocateDone: 'PowerShell 7 已安装到系统级：{path}。',
     relocateDoneNoPath: 'PowerShell 7 已安装到系统级。',
+    relocateDoneMsix: '已从官方 MSIX 应用包安装 PowerShell 7：{path}。应用包按用户安装，其他 Windows 账户和原有系统级安装都不受影响。',
+    relocateDoneMsixNoPath: '已从官方 MSIX 应用包为当前 Windows 账户安装 PowerShell 7。应用包按用户安装，其他 Windows 账户和原有系统级安装都不受影响。',
+    actionRelocateHintMsix: '该版本不提供 MSI：为当前 Windows 账户安装官方 PowerShell 7 应用包，并删除当前用户副本。无需管理员授权，其他账户不受影响。',
+    relocateConfirmMsix: '该版本不提供 MSI。为当前 Windows 账户安装官方 PowerShell 7 应用包，然后删除当前用户副本？其他 Windows 账户和原有系统级安装都不受影响。',
     relocateRemoved: '已删除 {count} 个当前用户副本。',
     relocateFailed: '系统级安装失败：{error}',
     actionUninstall: '卸载当前用户副本',
@@ -864,9 +884,15 @@
     var systemPath = textOrNull(relocate.systemPath);
     var succeeded = relocate.ok === true || relocate.relocated === true;
     if (succeeded) {
-      var done = systemPath !== null
-        ? interpolate(t('relocateDone'), { path: systemPath })
-        : t('relocateDoneNoPath');
+      // A release without an MSI installs a per-user app package, so "system-wide" would be a lie.
+      var appPackage = relocate.method === 'msix';
+      var done = appPackage
+        ? (systemPath !== null
+          ? interpolate(t('relocateDoneMsix'), { path: systemPath })
+          : t('relocateDoneMsixNoPath'))
+        : (systemPath !== null
+          ? interpolate(t('relocateDone'), { path: systemPath })
+          : t('relocateDoneNoPath'));
       if (removed.length > 0) {
         done += ' ' + interpolate(t('relocateRemoved'), { count: removed.length });
       }
@@ -898,6 +924,12 @@
     var hostState = React.useState(null);
     var host = hostState[0];
     var setHost = hostState[1];
+
+    /** True when the latest release publishes no MSI, so a "system" action installs the per-user app package. */
+    function installsAppPackage() {
+      var latestInfo = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
+      return latestInfo.installerKind === 'msix' || latestInfo.installerKind === 'msixbundle';
+    }
 
     var openState = React.useState(false);
     var open = openState[0];
@@ -1283,6 +1315,7 @@
     var releasesUrl = typeof host.releasesUrl === 'string' ? host.releasesUrl : 'https://github.com/PowerShell/PowerShell/releases/latest';
     var latestInfo = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
     // Manual downloads default to the installer the release actually publishes: the MSI normally,
+    // an MSIX app package or bundle when the release has no MSI (7.7.0). The portable ZIP stays
     // available as a second link. Until the latest-release check returns, the release page is the
     // safe fallback.
     var manualInstallerUrl = (typeof latestInfo.installerUrl === 'string' && latestInfo.installerUrl)
@@ -1293,6 +1326,8 @@
       : releasesUrl;
     function manualInstallerLabel(upgrade) {
       var kind = typeof latestInfo.installerKind === 'string' ? latestInfo.installerKind : null;
+      if (kind === 'msixbundle') return t(upgrade ? 'manualUpgradeMsixBundle' : 'manualMsixBundle');
+      if (kind === 'msix') return t(upgrade ? 'manualUpgradeMsix' : 'manualMsix');
       if (kind === 'zip') return t(upgrade ? 'manualUpgradeZip' : 'manualZip');
       return t(upgrade ? 'manualUpgradeMsi' : 'manualMsi');
     }
@@ -1395,7 +1430,7 @@
         )
       ));
       // The installer result can explain what the summary line cannot: a release without an MSI
-      // cannot be installed system-wide, and older machine-wide copies may still win on PATH.
+      // installs the per-user app package, and older machine-wide copies may still win on PATH.
       var doneResult = host.result !== null && typeof host.result === 'object' ? host.result : null;
       if (doneResult !== null) {
         if (typeof doneResult.message === 'string' && doneResult.message.length > 0) {
@@ -1641,8 +1676,8 @@
             onClick: function () { startSystemInstall(true); }
           },
           canUpdate
-            ? t('updateSystem')
-            : t('installSystem')
+            ? t(installsAppPackage() ? 'updateToSystemMsix' : 'updateSystem')
+            : t(installsAppPackage() ? 'installSystemMsix' : 'installSystem')
         ));
       }
       if (canUpdate) {
@@ -1658,7 +1693,7 @@
               ? startUserUpdate
               : function () { startSystemInstall(false); }
           },
-          userCopy ? t('updateUser') : t('updateSystem')
+          userCopy ? t('updateUser') : t(installsAppPackage() ? 'updateToSystemMsix' : 'updateSystem')
         ));
       }
       footer.push(React.createElement(
@@ -1779,6 +1814,16 @@
     var hostState = React.useState(null);
     var host = readState(hostState[0]);
     var setHost = hostState[1];
+
+    /**
+     * True when the latest release publishes no MSI. The "system" actions then install the official
+     * MSIX app package, which Windows registers per user (no UAC), so the copy must not promise a
+     * system-wide installation.
+     */
+    function installsAppPackage() {
+      var latestInfo = host.latest !== null && typeof host.latest === 'object' ? host.latest : {};
+      return latestInfo.installerKind === 'msix' || latestInfo.installerKind === 'msixbundle';
+    }
 
     /** `{message, hint, requiresElevation, warnings}` for the last failed request. */
     var errorState = React.useState(null);
@@ -2039,7 +2084,7 @@
         return postJson(ROUTE_RELOCATE, { removeUser: true, method: 'auto' }).then(function (data) {
           if (data.state) adopt(data.state);
           else refresh();
-          if (mounted.current) setNotice({ text: t('relocateStarted'), warnings: [] });
+          if (mounted.current) setNotice({ text: t(installsAppPackage() ? 'relocateStartedMsix' : 'relocateStarted'), warnings: [] });
         });
       });
     }
@@ -2060,7 +2105,7 @@
         return postJson(ROUTE_RELOCATE, { removeUser: true, method: 'auto' }).then(function (data) {
           if (data.state) adopt(data.state);
           else refresh();
-          if (mounted.current) setNotice({ text: t('relocateStarted'), warnings: [] });
+          if (mounted.current) setNotice({ text: t(installsAppPackage() ? 'relocateStartedMsix' : 'relocateStarted'), warnings: [] });
         });
       });
     }
@@ -2220,20 +2265,13 @@
         var versionText = entry.version === null || entry.version === undefined
           ? t('pickerUnverified')
           : 'v' + entry.version;
-        var unsupported = entry.supported === false;
         var optionLabel = versionText
           + ' · ' + scopeLabel(entry.scope)
           + ' · ' + methodLabel(entry.method)
-          + (entry.active === true ? ' · ' + t('pickerActive') : '')
-          + (unsupported ? ' · ' + t('pickerUnsupported') : '');
+          + (entry.active === true ? ' · ' + t('pickerActive') : '');
         options.push(React.createElement(
           'option',
-          {
-            key: 'entry-' + index,
-            value: entry.path,
-            title: entry.reason !== null && entry.reason !== undefined ? entry.reason : entry.path,
-            disabled: unsupported
-          },
+          { key: 'entry-' + index, value: entry.path, title: entry.path },
           optionLabel + ' — ' + entry.path
         ));
       }
@@ -2264,9 +2302,6 @@
               : null)),
         host.selection !== null && host.selection.path !== null && host.selection.found !== true
           ? React.createElement('p', { key: 'missing', className: 'pwsh7_hint' }, interpolate(t('pickerMissing'), { path: host.selection.path }))
-          : null,
-        list.some(function (entry) { return entry.supported === false; })
-          ? React.createElement('p', { key: 'unsupported', className: 'pwsh7_hint' }, t('pickerUnsupportedHint'))
           : null,
         busyAction === 'installation'
           ? React.createElement('p', { key: 'saving', className: 'pwsh7_hint' }, t('pickerSaving'))
@@ -2639,6 +2674,8 @@
       || 'https://github.com/PowerShell/PowerShell/releases/latest';
     function manualInstallerLabel(upgrade) {
       var kind = textOrNull(latestLinks.installerKind);
+      if (kind === 'msixbundle') return t(upgrade ? 'manualUpgradeMsixBundle' : 'manualMsixBundle');
+      if (kind === 'msix') return t(upgrade ? 'manualUpgradeMsix' : 'manualMsix');
       if (kind === 'zip') return t(upgrade ? 'manualUpgradeZip' : 'manualZip');
       return t(upgrade ? 'manualUpgradeMsi' : 'manualMsi');
     }
@@ -2687,7 +2724,7 @@
             disabled: busy,
             onClick: startUserUpdate
           }));
-          updateButtons.push(actionButton('update-to-system', t('updateToSystem'), 'update-to-system', {
+          updateButtons.push(actionButton('update-to-system', t(installsAppPackage() ? 'updateToSystemMsix' : 'updateToSystem'), 'update-to-system', {
             disabled: busy,
             onClick: startSystemUpdate
           }));
@@ -2729,19 +2766,19 @@
     }
 
     if (host.userCopy) {
-      actionChildren.push(React.createElement('p', { key: 'relocate-hint', className: 'pwsh7_actionHint' }, t('actionRelocateHint')));
+      actionChildren.push(React.createElement('p', { key: 'relocate-hint', className: 'pwsh7_actionHint' }, t(installsAppPackage() ? 'actionRelocateHintMsix' : 'actionRelocateHint')));
       if (confirming === 'relocate') {
         actionChildren.push(React.createElement(
           'div',
           { key: 'relocate-confirm', className: 'pwsh7_confirm' },
-          React.createElement('p', { key: 'text', className: 'pwsh7_confirmText' }, t('relocateConfirm')),
+          React.createElement('p', { key: 'text', className: 'pwsh7_confirmText' }, t(installsAppPackage() ? 'relocateConfirmMsix' : 'relocateConfirm')),
           React.createElement(
             'div',
             { key: 'buttons', className: 'pwsh7_actions' },
             actionButton('relocate-cancel', t('confirmCancel'), 'relocate-cancel', {
               onClick: function () { setConfirming(null); }
             }),
-            actionButton('relocate-do', t('relocateConfirmButton'), 'relocate-confirm', {
+            actionButton('relocate-do', t(installsAppPackage() ? 'relocateConfirmButtonMsix' : 'relocateConfirmButton'), 'relocate-confirm', {
               disabled: busy,
               onClick: startRelocate
             })

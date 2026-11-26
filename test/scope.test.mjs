@@ -13,6 +13,7 @@ import {
   requireSystemAdministrator,
   isProcessElevated,
 } from '../lib/install-scope.mjs';
+import { wingetInstallArgs } from '../lib/install.mjs';
 import { createSetupService } from '../lib/setup-service.mjs';
 import { routerRoot } from '../lib/paths.mjs';
 
@@ -22,6 +23,8 @@ test('scopes validate and system uses Program Files', () => {
   assert.throws(() => validateScope('machine'), /unsupported install scope/);
   assert.equal(installDirectory({ ProgramFiles: 'D:\\Apps' }, 'system'), 'D:\\Apps\\PowerShell\\7');
   assert.equal(installDirectory({}, 'user', 'D:\\User'), 'D:\\User');
+  assert.deepEqual(wingetInstallArgs('pwsh', 'system').slice(-2), ['--scope', 'machine']);
+  assert.deepEqual(wingetInstallArgs().slice(-2), ['--scope', 'user']);
 });
 
 test('PATH script uses matching registry hive and preserves expandable values', () => {

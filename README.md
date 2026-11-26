@@ -279,14 +279,17 @@ The browser half also registers a **PowerShell 7** page in the Web GUI's setting
   a running install, each as `ok` / `warn` / `fail` with details.
 - **Install/repair:** starts the same shared install job as the setup dialog (user scope), with live
   progress.
-- **Migrate to system / Update system-wide:** runs the official PowerShell 7 MSI, which upgrades
+- **Migrate to system / Update system-wide:** runs the official installer for the latest release as
+  resolved from its manifest. For an MSI release the MSI upgrades
   `%ProgramFiles%\PowerShell\7\pwsh.exe` in place (the executable Windows Terminal and every other
   launcher resolve). An unelevated host raises one UAC prompt; the job shows
   `waiting for administrator approval (UAC)`. After the MSI verifies the new version, the same
   elevated session removes any legacy `…\PowerShell\7\<version>` side-by-side copy and its machine
-  PATH entry, then the per-user copy and routing are updated. A release that publishes no MSI
-  (v7.7.0) cannot be installed system-wide: the action fails with an explanation and the
-  current-user portable ZIP is the supported alternative.
+  PATH entry, then the per-user copy and routing are updated. For a release that publishes no MSI
+  (v7.7.0) the action installs the official MSIX app package instead: Windows app packages install
+  per user, so it completes as a current-user installation with no UAC prompt, the status page
+  shows scope “Current user” and method “Official MSIX app package (per user)”, and an older
+  machine-wide MSI is left untouched with a warning that Windows Terminal keeps launching it.
 - **Uninstall:** available only for the plugin-managed per-user portable install. It removes the
   installed versions and temporary directory, drops the managed `PATH` entry, and leaves
   system/package-manager installations untouched.
@@ -307,21 +310,25 @@ and in the desktop shell without a second window:
   **“PowerShell 7 setup / PowerShell 7 is installed”**, never “not found”; it shows a compact fact
   list — version, executable, scope (System / Current user) and source — plus the prompt-guidance
   choices. `Done` saves the guidance and the confirmation.
-- **Updates:** the dialog asks `/pwsh7/latest` for the newest release that publishes an MSI and
-  compares it with the installed executable, including the installation the plugin recorded. The
-  payload reports `installerKind` (`msi` or `zip`) and `installerUrl` (`msiUrl` is set only for MSI
-  releases); a release without an MSI (7.7.0) reports a check error instead of offering an app
-  package. With a user-folder copy it offers **Update in user folder** and **Install system-wide**
-  (removes the user copy and its PATH entry; one UAC prompt). With a system copy it offers **Update
-  system-wide**. A failed check leaves the installed state untouched and only shows the error line.
-  Settings → PowerShell 7 shows the same update actions later.
+- **Updates:** the dialog asks `/pwsh7/latest` for the newest release and compares it with the
+  installed executable, including the installation the plugin recorded. The payload reports the
+  resolved `installerKind` (`msi`, `msix`, `msixbundle` or `zip`) and `installerUrl` (`msiUrl` is
+  set only for MSI releases), so an installed 7.7.0 app package is not “outdated” merely because an
+  older Program Files MSI remains. With a user-folder copy it offers **Update in user folder** and
+  **Install system-wide** (removes the user copy and its PATH entry; elevated when the MSI runs —
+  on a release without an MSI it installs the per-user app package instead and needs no UAC). With
+  a system copy it offers **Update system-wide**. A failed check leaves the installed state
+  untouched and only shows the error line. Settings → PowerShell 7 shows the same update actions
+  later.
 - **What it does when missing:** `Download and install` starts the shared, user-initiated
-  installation job. The scope defaults to **system (official MSI; one UAC prompt)**, and the
-  current-user option uses the portable ZIP. The dialog shows `downloading → extracting → verifying`,
-  transferred bytes, total, and percent. `Cancel download` aborts it. A manual **MSI** download /
-  upgrade link sits beside the portable **ZIP** link; until the latest-release check returns, both
-  fall back to the official PowerShell releases page. A system-scope failure on a release without an
-  MSI names the current-user ZIP as the alternative; no Microsoft Store (MSIX) package is installed.
+  installation job. The scope defaults to **system (official installer; UAC only when the MSI
+  runs)**; the current-user option uses the portable ZIP. The dialog shows
+  `downloading → extracting → verifying`, transferred bytes, total, and percent. `Cancel download`
+  aborts it. A manual installer download/upgrade link follows the resolved asset — **MSI**, **MSIX**
+  or **MSIX bundle** — beside the portable **ZIP** link. On a release without an MSI the job
+  installs the per-user MSIX app package (no UAC; the MSIX bundle is larger than ~100 MB) and the
+  result message says so. Until the latest-release check returns, the links fall back to the
+  official PowerShell releases page.
 - **Why one job:** the dialog and the settings page share one coordinator, so whichever surface the
   user starts an install from shows the same progress, and two installs cannot race on the same
   archive under `%LOCALAPPDATA%\dsh\pwsh7\tmp`. The model's `shell_router` tool never starts one.
@@ -410,66 +417,94 @@ exists is ignored (and `/pwsh7/state` reports `selection.found: false`).
 Installation is only started by the user, from the Web setup dialog or Settings → PowerShell 7,
 or by installing PowerShell 7 outside DSH. The model-facing tool never starts an install.
 
-**Installation policy (0.7.0): two mechanisms only.** The plugin installs the official **MSI**
-(system scope) or the portable **ZIP** (current user). winget and Microsoft Store (MSIX) installs
-are not used at all: an MSIX `pwsh.exe` is a package app-execution alias that a non-interactive
-child process frequently cannot launch, which is the "PowerShell 7 is installed but `pwsh` cannot
-run" failure this plugin avoids. A release that publishes no MSI (PowerShell 7.7.0 ships a ZIP and
-an `MSIXBUNDLE`) therefore cannot be installed system-wide by this plugin: the system action fails
-with an explanation and the current-user portable ZIP is the supported path.
+The first-run dialog defaults to `scope: "system"` and the official installer; choose
+`scope: "user"` for the portable ZIP. The installer is resolved from the latest release manifest:
+per-architecture **MSI** first, then per-architecture **MSIX**, then the architecture-agnostic
+**MSIXBUNDLE** (`PowerShell-<version>.msixbundle`; a `PowerShell-LTS-<version>.msixbundle` is
+accepted only when its version matches the release, and `PowerShellPreview-*` bundles are ignored).
+Releases that still publish an MSI (v7.6.10 LTS) use the MSI; v7.7.0 publishes only the MSIX bundle
+and ZIPs, so a system request completes as a current-user app-package installation (see below).
+When the GitHub API is unavailable, the plugin follows the release tag's page redirect and probes
+the candidate asset URLs with HTTP `HEAD` (then a one-byte range `GET`) in the same preference
+order. Both the first-run dialog and Settings also expose a manual installer download/upgrade link,
+labelled **MSI**, **MSIX** or **MSIX bundle** according to the resolved asset, plus a portable ZIP
+link. Until the latest-release check returns, those links fall back to the official PowerShell
+releases page.
 
 | Scope | Method | Destination | Persistent PATH |
 |---|---|---|---|
 | `user` | portable ZIP | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | Current user (`HKCU\Environment`) |
-| `system` | **official MSI, in place** | `%ProgramFiles%\PowerShell\7\pwsh.exe` (canonical; no `<version>` subdirectory) | System, managed by the official installer; the canonical directory is ensured first |
+| `system` | **official installer, in place** — MSI when the release publishes one, otherwise the per-user MSIX app package | MSI: `%ProgramFiles%\PowerShell\7\pwsh.exe` (canonical; no `<version>` subdirectory). MSIX: `<InstallLocation>\pwsh.exe` of the registered package (alias fallback `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`) | MSI: System, managed by the official installer; the canonical directory is ensured first. MSIX: none; the app package registers its own alias |
 
-A system install/upgrade runs the official `PowerShell-<version>-win-<arch>.msi`. The MSI upgrades
-the canonical `…\PowerShell\7\pwsh.exe` in place, so Windows Terminal, Win+R and every other
-launcher see the new version — not just DSH's `pwsh` tool. An unelevated DSH host raises one UAC
-prompt (`Start-Process -Verb RunAs`) and the job reports `waiting for administrator approval (UAC)`.
-The elevated helper verifies the canonical executable's file version before it deletes anything;
-only then does it remove legacy `…\PowerShell\7\<version>` side-by-side copies and their machine
-PATH entries. If Windows scheduled the file replacement for a reboot, the legacy copy and PATH are
-left alone and the job reports that a reboot/closed terminals are required.
+A system install/upgrade resolves the installer from the release manifest and runs the official
+one. When the release publishes an MSI, it runs `PowerShell-<version>-win-<arch>.msi`; the MSI
+upgrades the canonical `…\PowerShell\7\pwsh.exe` in place, so Windows Terminal, Win+R and every
+other launcher see the new version — not just DSH's `pwsh` tool. An unelevated DSH host raises one
+UAC prompt (`Start-Process -Verb RunAs`) and the job reports `waiting for administrator approval
+(UAC)`. The elevated helper verifies the canonical executable's file version before it deletes
+anything; only then does it remove legacy `…\PowerShell\7\<version>` side-by-side copies and their
+machine PATH entries. If Windows scheduled the file replacement for a reboot, the legacy copy and
+PATH are left alone and the job reports that a reboot/closed terminals are required.
 
-When the resolved release publishes no MSI, the system action stops with an actionable error
-instead of installing an app package: it names the release, says that only the MSI or the
-current-user portable ZIP is supported, and points at the current-user option in Settings. The
-current-user ZIP install of that release still works normally.
+When the release publishes no MSI (v7.7.0), the same job takes the MSIX path instead: it downloads
+the resolved MSIX bundle or per-architecture MSIX with the same live progress and cancel, verifies
+the ZIP/OPC package magic, and installs it with `Add-AppxPackage` run through **Windows PowerShell
+5.1** (the Appx cmdlets are not available in PowerShell 7). Windows app packages install per user,
+so a `system` request that reaches this path completes as a **current-user installation** — no UAC
+prompt — and the status page shows scope “Current user” and method “Official MSIX app package (per
+user)”. The job resolves the registered executable with `Get-AppxPackage Microsoft.PowerShell` (or `Microsoft.PowerShell-LTS` for an LTS bundle) →
+`<InstallLocation>\pwsh.exe` (falling back to `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe`),
+probes its version, and records it as the installation with `method: msix`; the result message
+explains that the release publishes no MSI. An older machine-wide MSI install is left untouched and
+a warning says Windows Terminal keeps launching that older installation until it is upgraded or
+uninstalled, while DSH uses the app package. Versioned `…\PowerShell\7\<version>` legacy side-by-side
+copies cannot be removed without elevation on this path: the job drops them from its own process
+`PATH`, deletes any it can, and otherwise names the directories that (and whose machine `PATH` entry)
+still need an elevated manual removal. The finished install shows this result message and its
+warnings in the setup dialog and in Settings. If a running PowerShell 7 instance blocks the update,
+the helper retries with `Add-AppxPackage -ForceApplicationShutdown`; if Windows blocks sideloading
+(for example `0x80073CFF`), the error explains how to allow sideloading or to use the current-user
+portable ZIP.
 
 User installation needs no elevation and keeps the existing PATH behavior (preserve value types,
 avoid duplicates, refresh the host process PATH, notify Windows). Already running terminals may
 need reopening after a system upgrade.
 
 The settings page can migrate an existing per-user install to the system scope in one step
-(`POST /pwsh7/relocate`): it runs the official MSI (or reuses a canonical install that is already
-current), removes the per-user copy, and points the config at the canonical system executable.
+(`POST /pwsh7/relocate`): it runs the resolved official installer (or reuses a canonical install
+that is already current), removes the per-user copy, and points the config at the canonical system
+executable. On a release that publishes no MSI the migration installs the per-user app package
+instead and records its executable with `method: msix`; an older machine-wide MSI is left in place
+with a warning.
 
 Installing, updating, uninstalling or relocating PowerShell 7 clears any explicit installation
 selection, so the copy the operation just installed or recorded becomes the active one again.
 
-To install without the Web GUI, install PowerShell 7 yourself (official MSI or a release ZIP) and
-set `DSH_PWSH_PATH` or `config.json` to its `pwsh.exe`. A Microsoft Store (MSIX) copy is not a
-supported target: it cannot be launched reliably from a child process.
+To install without the Web GUI, install PowerShell 7 yourself (official MSI, official MSIX app
+package, Store, or release zip) and set `DSH_PWSH_PATH` or `config.json` to its `pwsh.exe`.
 
 Download sources:
 
 | Scope | Asset | Destination |
 |---|---|---|
 | `user` | `PowerShell-<version>-win-x64.zip` | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>\` |
-| `system` | `PowerShell-<version>-win-<arch>.msi` (only when the release publishes one) | `%ProgramFiles%\PowerShell\7\pwsh.exe` (in place) |
+| `system` | MSI when published (`PowerShell-<version>-win-<arch>.msi`), otherwise per-architecture MSIX or `PowerShell-<version>.msixbundle` | MSI: `%ProgramFiles%\PowerShell\7\pwsh.exe` (in place). MSIX: per-user app package |
 
 - HTTPS streaming download into `%LOCALAPPDATA%\dsh\pwsh7\tmp`, with progress callbacks and
-  cancellation. The ZIP is checked for the ZIP magic and the MSI for the OLE/Windows Installer
-  magic.
+  cancellation. The ZIP is checked for the ZIP magic, the MSIX/MSIXBUNDLE for the ZIP/OPC package
+  magic, and the MSI for the OLE/Windows Installer magic.
 - User scope extracts with the Windows built-in `tar.exe` (bsdtar) and runs the new `pwsh.exe` once
   to verify a major version >= 7 before writing `config.json`.
-- System scope runs the official MSI with `msiexec /i … /qn /norestart ALLUSERS=1`; it does not
-  extract a ZIP into Program Files. The installer is verified against `PowerShell-<version>` by
-  reading the updated `pwsh.exe` file version before cleanup.
-- `auto` resolves to the MSI (system scope) or the portable ZIP (user scope). There is no winget or
-  MSIX fallback: a failure returns the exact manual MSI/ZIP recovery instruction and leaves the
-  existing installation untouched.
+- System scope runs the official MSI with `msiexec /i … /qn /norestart ALLUSERS=1` when the release
+  publishes one; it does not extract a ZIP into Program Files. The installer is verified against
+  `PowerShell-<version>` by reading the updated `pwsh.exe` file version before cleanup. A release
+  without an MSI installs the resolved MSIX/MSIXBUNDLE with `Add-AppxPackage` through Windows
+  PowerShell 5.1, verifies the registered package's `pwsh.exe` version, and records
+  `method: msix`.
+- `auto` uses the official installer for the system scope (the MSI when published, otherwise the
+  signed MSIX app package) and the portable ZIP for the user scope. A failure carries the exact
+  manual recovery instruction instead of silently switching to a different installer. There is no
+  winget/Store install fallback.
 - Live-tested on Windows: 106,364,316-byte zip downloaded in ~31 s, extracted to 244.8 MB, verified
   `7.6.7`.
 
@@ -483,18 +518,53 @@ owns it:
 |---|---|---|
 | Machine-wide official MSI | uninstall registry product `PowerShell 7-x64` (HKLM) | `msiexec /i … ALLUSERS=1` in place, one UAC prompt |
 | Per-user MSI | uninstall product in HKCU | `msiexec /i … ALLUSERS=0` in place (no elevation) |
+| Official MSIX app package | `Get-AppxPackage Microsoft.PowerShell` (LTS bundles register as `Microsoft.PowerShell-LTS`), the `method: "msix"` entry recorded in `config.json`, or an app-execution alias/package path | install the newest resolved MSIX/MSIXBUNDLE with `Add-AppxPackage` (per user, no elevation) and record the new executable; when a later release publishes an MSI, the same update installs the official MSI and then removes the app package (migration, see below) |
 | Manual/portable ZIP on `PATH` | `pwsh.exe` in a directory with no MSI/Store/package-manager marker | replace that directory: rename old → copy new → verify file version → delete old; rollback on failure. The PATH entry is unchanged |
 | Chocolatey | `…\chocolatey\bin\pwsh.exe` shim | `choco upgrade powershell-core -y` (elevated when needed) |
 | Scoop | `…\scoop\shims\pwsh.exe` shim | `scoop update pwsh` (global: `-g`, elevated) |
-| Microsoft Store (MSIX) | `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` or a registered app package | **refused**: MSIX copies are never used or updated; install the official MSI or the current-user portable ZIP |
+| Microsoft Store / MSIX alias | `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` (an `IO_REPARSE_TAG_APPEXECLINK` alias) or a package directory under `%ProgramFiles%\WindowsApps` | detected as the official MSIX app package (`method: "msix"`): update through the signed MSIX/MSIXBUNDLE channel, or migrate to the MSI when a release publishes one. `winget --source msstore` is not used for this installation |
 | Plugin-managed per-user copy | `%LOCALAPPDATA%\dsh\pwsh7\powershell7\<version>` | download the latest ZIP into a new version directory and repoint the config |
-| Legacy plugin system side-by-side copy | `%ProgramFiles%\PowerShell\7\<version>` | upgrade the canonical MSI, then remove the versioned copy and its PATH entry |
+| Legacy plugin system side-by-side copy | `%ProgramFiles%\PowerShell\7\<version>` | upgrade the canonical MSI when the release publishes one, then remove the versioned copy and its PATH entry. A release without an MSI installs the per-user app package instead and reports the leftover copy/PATH entry (removal needs elevation) |
 | `DSH_PWSH_PATH` / row `pwshPath` override | explicit override wins | **refused** with an explanation; update that copy with its own installer or remove the override |
-| Unknown / missing | nothing detected | install the official MSI into Program Files; when the latest release publishes no MSI, the error names the current-user portable ZIP as the alternative |
+| Unknown / missing | nothing detected | install the official installer: the canonical Program Files MSI when the release publishes one, otherwise the per-user MSIX app package |
+
+On a release that publishes no MSI (v7.7.0), the MSI-based mechanisms cannot upgrade to it: the
+system action installs the per-user MSIX app package instead, and an existing machine-wide MSI is
+left untouched with a warning that Windows Terminal keeps launching it until it is upgraded or
+uninstalled.
+
+### MSIX → MSI: moving to the official MSI later
+
+MSIX and MSI are **independent registrations**, not two versions of one installation. Running the
+MSI installer does not upgrade or remove an MSIX app package, and installing a newer MSIX bundle
+does not replace a machine-wide MSI. The plugin handles the transition explicitly:
+
+- An installation recorded as `method: msix` is classified as an MSIX app package. When a later
+  release publishes an MSI, **Update system-wide** installs that MSI (one UAC prompt) as the
+  system-wide `%ProgramFiles%\PowerShell\7\pwsh.exe`, then removes the recorded app package with
+  `Remove-AppxPackage` (no UAC) and records `method: "msi"`. The result says whether the app package
+  was removed.
+- If the app package cannot be removed (for example its files are in use), the MSI stays installed
+  and the result warns that the app-execution alias may keep launching the app package until it is
+  removed manually. The picker then shows both installations and the chosen one is used.
+- The migration refuses to go **backwards**: if the latest MSI release is older than the recorded
+  MSIX installation, the update fails with an explanation instead of downgrading. When the latest
+  release has no MSI, the same action updates the app package from the newer MSIX/MSIXBUNDLE.
+- Because the app-execution alias lives in the user `PATH`, it can shadow the machine-wide
+  `pwsh.exe` in terminals outside DSH until the app package is removed. DSH itself uses the
+  recorded MSI path after the migration.
+
+Both launch paths of the app package (the package's own `pwsh.exe` and the
+`%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` alias) were verified on Windows 11 with PowerShell
+7.7.0, including under DSH's Windows ACL sandbox (`workspace-write` and `read-only`): both report
+7.7.0. The earlier claim that an MSIX copy cannot be launched from a child process was too strong
+and has been removed; the plugin still avoids treating the package directory as a manual portable
+ZIP, because replacing its files would break the registration.
 
 The same detection also supports `win-arm64` and `win-x86` releases, chosen from the OS
-architecture. A missing package manager or a failed upgrade never silently falls back to installing
-a separate per-user copy: the result names the concrete recovery command.
+architecture, and installer resolution applies the MSI → MSIX preference for that architecture (the
+MSIXBUNDLE is architecture-agnostic). A missing package manager or a failed upgrade never silently
+falls back to installing a separate per-user copy: the result names the concrete recovery command.
 
 ## Sandbox behavior
 
@@ -515,12 +585,18 @@ a separate per-user copy: the result names the concrete recovery command.
    - **Still Windows PowerShell 5.1** — detection did not find PowerShell 7. Set `DSH_PWSH_PATH` or
      the `pwshPath` config entry, then check `status` again.
    - **PowerShell 7 installed in a custom location** — set `DSH_PWSH_PATH` or `config.json`.
-    - **The “system” install failed with “does not publish a Windows MSI”** — expected for a
-      release without an MSI (v7.7.0). System-wide installation needs the official MSI; install the
-      current-user portable ZIP instead.
-    - **Windows Terminal still starts an older PowerShell 7** — the newer release publishes no MSI,
-      so the older machine-wide MSI was left in place. Upgrade or uninstall it, or keep using the
-      current-user portable ZIP.
+   - **The “system” install finished as “Current user”** — expected on a release that publishes no
+     MSI (v7.7.0): Windows app packages install per user, so the job installs the MSIX bundle with
+     `Add-AppxPackage`, reports method “Official MSIX app package (per user)”, and needs no UAC.
+     Use the current-user portable ZIP if an app package is not desired.
+   - **Installed MSIX, want the official MSI later** — when a later release publishes an MSI, run
+     **Update system-wide**: the plugin installs the MSI and removes the recorded app package. MSIX
+     and MSI are separate registrations, so installing the MSI alone would leave both present.
+   - **MSIX install fails with `0x80073CFF`** — Windows blocks sideloading. Allow app sideloading
+     (Settings → System → For developers) or use the current-user portable ZIP.
+   - **Windows Terminal still starts an older PowerShell 7** — an older machine-wide MSI was left in
+     place because the release publishes no MSI. Upgrade or uninstall that installation; DSH uses
+     the app package recorded in `config.json`.
    - **Sandbox/ACL failure** — see the sandbox section above.
 
 ## Architecture
@@ -533,9 +609,9 @@ a separate per-user copy: the result names the concrete recovery command.
 | `lib/paths.mjs` | PowerShell 7 detection, version probing, `config.json` IO |
 | `lib/route.mjs` | Routing mode (plugin/system/pwsh5) persistence, the explicit `selectedPwshPath` selection, system-default and pwsh5 executable resolution, install and legacy-copy description |
 | `lib/install-plan.mjs` | Detects MSI/portable/Store/Chocolatey/Scoop/plugin installs from persisted PATH + registry and chooses the upgrade strategy; `listPwshInstallations()` enumerates every installation and probes its version for the Settings picker |
-| `lib/install.mjs` | User-scope portable install (official zip); MSI-only system install from the release manifest (a release without an MSI fails with guidance), MSI/portable-in-place/package-manager upgrades, legacy copy cleanup; progress and phase callbacks |
+| `lib/install.mjs` | User-scope portable install (official zip); system-scope installer resolution from the release manifest (MSI → MSIX → MSIXBUNDLE), MSI/portable-in-place/package-manager upgrades, MSIX/MSIXBUNDLE install through Windows PowerShell 5.1 (`Add-AppxPackage`), MSIX→MSI migration (`Remove-AppxPackage`), legacy copy cleanup; progress and phase callbacks |
 | `lib/install-scope.mjs` | Registry PATH persistence/removal (preserving value kind), elevation probes, Program Files scope, system versioned-copy enumeration |
-| `lib/elevate.mjs` | Install helpers: the UAC-run MSI upgrade with canonical-version verification and legacy copy/PATH cleanup, plus the elevated ZIP replace and package-manager commands |
+| `lib/elevate.mjs` | Install helpers: the UAC-run MSI upgrade with canonical-version verification and legacy copy/PATH cleanup, plus the `Add-AppxPackage` helper for releases without an MSI, run through Windows PowerShell 5.1 (no elevation) |
 | `lib/state.mjs` | Process-wide resolution cache shared by the executor and the tool; applies the detection priority (`DSH_PWSH_PATH` → `selectedPwshPath` → recorded install → well-known/PATH); missing-run signal |
 | `lib/maintenance.mjs` | Removes a plugin-managed per-user portable install (files, temp dir, managed PATH entries) |
 | `lib/selfcheck.mjs` | Read-only self-check: executable, version, route, config, install, PATH, shipped packages, sandbox, job, routes |

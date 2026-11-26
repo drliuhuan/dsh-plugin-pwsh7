@@ -16,8 +16,8 @@ import {
   discoveredPortablePwshPaths,
   fileOrSymlinkExists,
   findPwsh,
+  isMsixPwshPath,
   isPathInside,
-  isStoreAliasPath,
   isPowerShell7,
   probePwsh,
   readRouterConfig,
@@ -96,9 +96,10 @@ test('candidatePwshPaths keeps the contract order', (t) => {
   );
   assert.ok(paths.includes(W.join(base, 'bin', 'pwsh.exe')));
   assert.ok(paths.includes(W.join(base, 'tools', 'pwsh.exe')));
-  // The Microsoft Store (MSIX) app-execution alias is never an automatic candidate: it exists on
-  // disk but a child process frequently cannot launch it. Settings lists it as unsupported.
-  assert.ok(!paths.includes(W.join(base, 'localappdata', 'Microsoft', 'WindowsApps', 'pwsh.exe')));
+  assert.ok(
+    paths.indexOf(W.join(base, 'localappdata', 'Microsoft', 'WindowsApps', 'pwsh.exe')) >
+      paths.indexOf(W.join(base, 'tools', 'pwsh.exe')),
+  );
   assert.ok(
     paths.includes(W.join(base, 'Program Files (x86)', 'PowerShell', '7', 'pwsh.exe')),
   );
@@ -341,12 +342,16 @@ test('real findPwsh detects the installed PowerShell 7', { skip: !fs.existsSync(
   assert.ok(fs.existsSync(found.path));
 });
 
-test('isStoreAliasPath also recognises MSIX package directories under Program Files', (t) => {
+test('isMsixPwshPath recognizes the app-execution alias and app-package directories', (t) => {
   const base = makeTemp(t);
   const env = makeEnv(base);
-  const packageExe = W.join(base, 'Program Files', 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe');
-  writeFile(packageExe);
-  assert.equal(isStoreAliasPath(packageExe, env), true);
-  assert.equal(isStoreAliasPath(W.join(base, 'Program Files', 'PowerShell', '7', 'pwsh.exe'), env), false);
-  assert.ok(!candidatePwshPaths(env).some((candidate) => isStoreAliasPath(candidate, env)));
+  assert.equal(isMsixPwshPath(W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps', 'pwsh.exe'), env), true);
+  assert.equal(
+    isMsixPwshPath(
+      W.join(env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe'),
+      env,
+    ),
+    true,
+  );
+  assert.equal(isMsixPwshPath(W.join(env.ProgramFiles, 'PowerShell', '7', 'pwsh.exe'), env), false);
 });

@@ -4,6 +4,35 @@ All notable changes to `dsh-plugin-pwsh7` are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.2] - 2026-11-26
+### Added
+
+- **The official MSIX/MSIXBUNDLE install channel is back.** A system-scope install on a release
+  that publishes no MSI (PowerShell 7.7.0 ships only the signed app bundle and ZIPs) installs the
+  app package per user with `Add-AppxPackage`, with live progress, the in-use retry, sideloading
+  hints, and a recorded `method: "msix"` installation.
+- **MSIX → MSI migration.** When an installation recorded as `method: "msix"` exists and a later
+  release publishes an MSI, **Update system-wide** installs the official MSI (one UAC prompt) and
+  then removes the recorded app package with `Remove-AppxPackage` through Windows PowerShell 5.1.
+  The result reports whether the package was removed; a failed removal keeps the MSI and warns that
+  the app-execution alias may still launch the package. The migration refuses to downgrade when the
+  newest MSI is older than the recorded app package. Without a newer MSI the same action updates
+  the app package from the newer bundle.
+- MSIX app-execution aliases and app-package directories are recognized as `kind: "msix"`
+  (supported) by detection, the Settings picker and the upgrade planner, instead of being treated
+  as an unsupported Store alias or a manual portable ZIP.
+
+### Changed
+
+- **Corrected the 0.7.1 position on MSIX.** An on-machine experiment (Windows 11, official signed
+  PowerShell 7.7.0 MSIX bundle, current user) launched both the package's own `pwsh.exe` and the
+  `%LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe` alias successfully, including under DSH's
+  Windows ACL sandbox (`workspace-write` and `read-only`, Low-integrity restricted token). The
+  0.7.1 statement that MSIX copies "cannot be launched reliably from a child process" was a policy
+  assumption, not a reproduced technical limit, and has been removed from the code and docs.
+- Removed `winget` from the setup methods; upgrading existing Chocolatey/Scoop installations still
+  goes through `choco`/`scoop` as before.
+
 ## [0.7.1] - 2026-11-25
 ### Fixed
 

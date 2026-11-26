@@ -173,7 +173,7 @@ test('parseMsiProductRecords maps machine and per-user products to their directo
   assert.equal(products[1].directory, W.normalize('D:\\Portable MSI'));
 });
 
-test('classifyPwshPath recognizes MSI, plugin, legacy, Store, Chocolatey, Scoop and portable paths', (t) => {
+test('classifyPwshPath recognizes MSI, plugin, legacy, MSIX alias/package, Chocolatey, Scoop and portable paths', (t) => {
   const env = makeEnv(makeTemp(t));
   const root = W.join(env.LOCALAPPDATA, 'dsh', 'pwsh7');
   const msiProducts = parseMsiProductRecords([
@@ -192,7 +192,14 @@ test('classifyPwshPath recognizes MSI, plugin, legacy, Store, Chocolatey, Scoop 
   );
   assert.equal(
     classifyPwshPath(W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps', 'pwsh.exe'), { env, root }).kind,
-    'store',
+    'msix',
+  );
+  assert.equal(
+    classifyPwshPath(
+      W.join(env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe'),
+      { env, root },
+    ).kind,
+    'msix',
   );
   assert.equal(
     classifyPwshPath(W.join(env.ProgramData, 'chocolatey', 'bin', 'pwsh.exe'), { env, root }).kind,
@@ -261,17 +268,14 @@ test('planUpgrade covers every installation kind', (t) => {
   const portable = planUpgrade({ kind: 'portable', scope: 'system', directory: canonical }, { env, root });
   assert.equal(portable.strategy, 'zip-in-place');
 
-  // A Microsoft Store (MSIX) copy is never upgraded in place: DSH only installs the MSI or the ZIP.
-  const store = planUpgrade({ kind: 'store', scope: 'user', directory: 'C:\\Store', path: 'C:\\Store\\pwsh.exe' }, { env, root });
-  assert.equal(store.strategy, 'refuse');
-  assert.match(store.reason, /Microsoft Store|MSIX/i);
+  assert.equal(planUpgrade({ kind: 'store', scope: 'user', directory: 'C:\\Store', path: 'C:\\Store\\pwsh.exe' }, { env, root }).strategy, 'store');
   assert.equal(planUpgrade({ kind: 'chocolatey', scope: 'system', directory: 'C:\\Choco', path: 'C:\\Choco\\pwsh.exe' }, { env, root }).strategy, 'chocolatey');
   assert.equal(planUpgrade({ kind: 'scoop', scope: 'user', directory: 'C:\\Scoop', path: 'C:\\Scoop\\pwsh.exe' }, { env, root }).strategy, 'scoop');
   assert.equal(planUpgrade({ kind: 'portable', explicit: true, directory: 'C:\\x', path: 'C:\\x\\pwsh.exe' }, { env, root }).strategy, 'refuse');
   assert.equal(planUpgrade(undefined, { env, root }).strategy, 'msi-install');
 });
 
-test('resolveUpgradePlan skips an unsupported Store alias in favour of the MSI install', async (t) => {
+test('resolveUpgradePlan prefers an MSIX alias on PATH over an MSI install', async (t) => {
   const env = makeEnv(makeTemp(t));
   const root = W.join(env.LOCALAPPDATA, 'dsh', 'pwsh7');
   const storeDir = W.join(env.LOCALAPPDATA, 'Microsoft', 'WindowsApps');
@@ -286,10 +290,8 @@ test('resolveUpgradePlan skips an unsupported Store alias in favour of the MSI i
     ], env),
     pathEntries: [{ value: storeDir, source: 'user' }],
   });
-  // The Store alias is listed (so the picker can explain it) but never chosen as the main install.
-  assert.ok(info.installations.some((entry) => entry.kind === 'store' && entry.supported === false));
-  assert.equal(info.main.kind, 'msi');
-  assert.equal(info.plan.strategy, 'msi');
+  assert.equal(info.main.kind, 'msix');
+  assert.equal(info.plan.strategy, 'msix');
 });
 
 test('resolveUpgradePlan refuses an explicit override', async (t) => {
@@ -300,26 +302,4 @@ test('resolveUpgradePlan refuses an explicit override', async (t) => {
   const info = await resolveUpgradePlan({ env, msiProducts: [], pathEntries: [] });
   assert.equal(info.main.explicit, true);
   assert.equal(info.plan.strategy, 'refuse');
-});
-
-test('an MSIX package directory is unsupported and never becomes the main installation', async (t) => {
-  const env = makeEnv(makeTemp(t));
-  const root = W.join(env.LOCALAPPDATA, 'dsh', 'pwsh7');
-  const exe = W.join(env.ProgramFiles, 'WindowsApps', 'Microsoft.PowerShell_7.7.0.0_x64__8wekyb3d8bbwe', 'pwsh.exe');
-  writeFile(exe);
-
-  const classified = classifyPwshPath(exe, { env, root, msiProducts: [] });
-  assert.equal(classified.kind, 'store');
-  assert.equal(classified.supported, false);
-  assert.match(classified.unsupportedReason, /MSIX|Microsoft Store/i);
-
-  assert.equal(planUpgrade(classified, { env, root }).strategy, 'refuse');
-
-  const listed = await listPwshInstallations({
-    env,
-    root,
-    plan: { installations: [classified], main: classified },
-    probe: async () => ({ ok: false }),
-  });
-  assert.equal(listed.installations[0].supported, false);
 });
